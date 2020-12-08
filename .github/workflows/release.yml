@@ -1,0 +1,51 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  release:
+    name: Upload Release Asset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go 1.14
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.14
+        id: go
+
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Set env
+        run: |
+          echo "VERSION=$(echo ${GITHUB_REF#refs/*/} | cut -c 2-)" >> $GITHUB_ENV
+      - name: Install docker
+        run: |
+          sudo apt-get update
+          sudo apt install --assume-yes apt-transport-https ca-certificates curl software-properties-common
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+          sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu bionic stable"
+          sudo apt-get install --assume-yes docker-ce docker-ce-cli containerd.io
+      - name: Build docker image
+        run: |
+          docker build . -t timestream-prometheus-connector-docker
+          docker save timestream-prometheus-connector-docker | gzip > timestream-prometheus-connector-docker-image-$VERSION.tar.gz
+      - name: Build binaries
+        run: |
+          python3 ./package.py -v $VERSION
+      - name: Create the release
+        run: |
+          set -x
+          assets=()
+          for asset in ./*.tar.gz; do
+            assets+=("-a" "$asset")
+          done
+          for asset in ./*.zip; do
+            assets+=("-a" "$asset")
+          done
+          tag_name="${GITHUB_REF##*/}"
+          hub release create -p "${assets[@]}" -m "$tag_name" "$tag_name"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
