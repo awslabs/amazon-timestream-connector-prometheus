@@ -11,12 +11,17 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the speci
 and limitations under the License.
 */
 
+// This file does the following:
+// 1. converts the Prometheus read requests and write requests to Amazon Timestream queries and records;
+// 2. sends the queries and records to Amazon Timestream through the read and write clients;
+// 3. converts the query results from Amazon Timestream to Prometheus read responses.
 package timestream
 
 import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/timestreamquery"
 	"github.com/aws/aws-sdk-go/service/timestreamquery/timestreamqueryiface"
@@ -37,8 +42,20 @@ type labelOperation string
 type longMetricsOperation func(measureValueName string) (labelOperation, error)
 
 // Store the initialization function calls to allow unit tests to mock the creation of real clients.
-var initWriteClient = func(sess *session.Session) timestreamwriteiface.TimestreamWriteAPI { return timestreamwrite.New(sess) }
-var initQueryClient = func(sess *session.Session) timestreamqueryiface.TimestreamQueryAPI { return timestreamquery.New(sess) }
+var initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+	sess, err := session.NewSession(config)
+	if err != nil {
+		return nil, err
+	}
+	return timestreamwrite.New(sess), nil
+}
+var initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
+	sess, err := session.NewSession(config)
+	if err != nil {
+		return nil, err
+	}
+	return timestreamquery.New(sess), nil
+}
 
 // recordDestinationMap is a nested map that stores slices of Records based on the ingestion destination.
 // Below is an example of the map structure:
@@ -107,19 +124,11 @@ func NewBaseClient(databaseLabel, tableLabel string) *Client {
 }
 
 // NewQueryClient creates a new Timestream query client with the given set of configuration.
-func (c *Client) NewQueryClient(logger log.Logger, configs *aws.Config) error {
-	sess, err := session.NewSession(configs)
-
-	if err != nil {
-		LogError(logger, "Failed to create a new session for queryClient.", err)
-		return err
-	}
-
+func (c *Client) NewQueryClient(logger log.Logger, configs *aws.Config) {
 	c.queryClient = &QueryClient{
-		client:          c,
-		logger:          logger,
-		config:          configs,
-		timestreamQuery: initQueryClient(sess),
+		client: c,
+		logger: logger,
+		config: configs,
 		readRequests: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: "timestream_connector_read_requests_total",
@@ -134,29 +143,14 @@ func (c *Client) NewQueryClient(logger log.Logger, configs *aws.Config) error {
 			},
 		),
 	}
-
-	// Send a SELECT 1 query to validate the connection.
-	return c.queryClient.timestreamQuery.QueryPages(
-		&timestreamquery.QueryInput{QueryString: aws.String("SELECT 1")},
-		func(page *timestreamquery.QueryOutput, lastPage bool) bool {
-			return true
-		})
 }
 
 // NewWriteClient creates a new Timestream write client with a given set of configurations.
-func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) error {
-	sess, err := session.NewSession(configs)
-
-	if err != nil {
-		LogError(logger, "Failed to create a new session for writeClient.", err)
-		return err
-	}
-
+func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) {
 	c.writeClient = &WriteClient{
 		client:                    c,
 		logger:                    logger,
 		config:                    configs,
-		timestreamWrite:           initWriteClient(sess),
 		failOnLongMetricLabelName: failOnLongMetricLabelName,
 		failOnInvalidSample:       failOnInvalidSample,
 		ignoredSamples: prometheus.NewCounter(
@@ -185,14 +179,20 @@ func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLo
 			},
 		),
 	}
-
-	return nil
 }
 
 // Write sends the prompb.WriteRequest to timestreamwriteiface.TimestreamWriteAPI
-func (wc *WriteClient) Write(req *prompb.WriteRequest) error {
+func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.Credentials) error {
+	wc.config.Credentials = credentials
+	var err error
+	wc.timestreamWrite, err = initWriteClient(wc.config)
+	if err != nil {
+		LogError(wc.logger, "Unable to construct a new session with the given credentials", err)
+		return err
+	}
+
 	recordMap := make(recordDestinationMap)
-	recordMap, err := wc.convertToRecords(req.Timeseries, recordMap)
+	recordMap, err = wc.convertToRecords(req.Timeseries, recordMap)
 	if err != nil {
 		LogError(wc.logger, "Unable to convert the received Prometheus write request to Timestream Records.", err)
 		return err
@@ -222,8 +222,15 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest) error {
 
 // Read converts the Prometheus prompb.ReadRequest into Timestream queries and return
 // the result set as Prometheus prompb.ReadResponse.
-func (qc *QueryClient) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
+func (qc *QueryClient) Read(req *prompb.ReadRequest, credentials *credentials.Credentials) (*prompb.ReadResponse, error) {
+	qc.config.Credentials = credentials
 	var err error
+	qc.timestreamQuery, err = initQueryClient(qc.config)
+	if err != nil {
+		LogError(qc.logger, "Unable to construct a new session with the given credentials", err)
+		return nil, err
+	}
+
 	queryInputs, isRelatedToRegex, err := qc.buildCommands(req.Queries)
 	if err != nil {
 		LogError(qc.logger, "Error occurred while translating Prometheus query.", err)
@@ -271,19 +278,22 @@ func (qc *QueryClient) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, erro
 
 // handleSDKErr parses and logs the error from SDK (if any)
 func (wc *WriteClient) handleSDKErr(req *prompb.WriteRequest, currErr error, errToReturn error) error {
-	if requestError, ok := currErr.(awserr.RequestFailure); ok {
-		if errToReturn == nil {
-			errToReturn = requestError
-		}
-		switch requestError.StatusCode() / 100 {
-		case 4:
-			LogDebug(wc.logger, "Error occurred while ingesting data due to invalid write request. Some Prometheus Samples were not ingested into Timestream, please review the write request and check the documentation for troubleshooting.", "request", req)
-		case 5:
-			errToReturn = requestError
-			LogDebug(wc.logger, "Internal server error occurred. Samples will be retried by Prometheus", "request", req)
-		}
+	requestError, ok := currErr.(awserr.RequestFailure)
+	if !ok {
+		LogError(wc.logger, "Error occurred while ingesting Timestream Records.", currErr)
+		return errors.NewSDKNonRequestError(currErr)
 	}
-	LogError(wc.logger, "Error occurred while ingesting Timestream Records.", currErr)
+
+	if errToReturn == nil {
+		errToReturn = requestError
+	}
+	switch requestError.StatusCode() / 100 {
+	case 4:
+		LogDebug(wc.logger, "Error occurred while ingesting data due to invalid write request. Some Prometheus Samples were not ingested into Timestream, please review the write request and check the documentation for troubleshooting.", "request", req)
+	case 5:
+		errToReturn = requestError
+		LogDebug(wc.logger, "Internal server error occurred. Samples will be retried by Prometheus", "request", req)
+	}
 	return errToReturn
 }
 

@@ -1,0 +1,97 @@
+Transform: AWS::Serverless-2016-10-31
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: "timestream-prometheus-connector-simple"
+    Description: "This serverless application deploys an AWS Lambda function and an Amazon API Gateway that listens for Prometheus remote write/read requests and stores metrics to Amazon Timestream. This application deploys all resources with default configuration options."
+    Author: "Amazon Timestream"
+    SpdxLicenseId: "Apache-2.0"
+    LicenseUrl: "LICENSE"
+    ReadmeUrl: "SIMPLE_README.md"
+    HomePageUrl: "https://aws.amazon.com/timestream/"
+    SemanticVersion: "1.1.0"
+
+Resources:
+  IAMLambdaRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: "simpleTimestreamLambdaRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                  - "lambda.amazonaws.com"
+                  - "apigateway.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: "simpleLambdaBasicExecutionPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource:
+                  Fn::Sub: "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/simplePrometheusConnectorLambda:*"
+
+  LambdaFunction:
+    Type: "AWS::Serverless::Function"
+    Properties:
+      Role: !GetAtt "IAMLambdaRole.Arn"
+      CodeUri: ./timestream-prometheus-connector-linux-amd64-1.1.0.zip
+      Description: "Prometheus remote storage connector for Amazon Timestream"
+      FunctionName: "simplePrometheusConnectorLambda"
+      Handler: "timestream-prometheus-connector-linux-amd64-1.1.0"
+      MemorySize: 512
+      Runtime: "go1.x"
+      Environment:
+        Variables:
+          database_label: "prometheusDatabaseLabel"
+          table_label: "prometheusTableLabel"
+      Events:
+        WriteApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref APIGateway
+            Method: POST
+            Path: /write
+            TimeoutInMillis: 15000
+            RouteSettings:
+              ThrottlingBurstLimit: 1200
+
+        ReadApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref APIGateway
+            Method: POST
+            Path: /read
+            TimeoutInMillis: 15000
+            RouteSettings:
+              ThrottlingBurstLimit: 1200
+
+  APIGateway:
+    Type: "AWS::Serverless::HttpApi"
+    Properties:
+      StageName: "prod"
+
+Outputs:
+  InvokeWriteURL:
+    Description: Remote write URL for Prometheus
+    Value:
+      Fn::Sub: 'https://${APIGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod/write'
+  InvokeReadURL:
+    Description: Remote read URL for Prometheus
+    Value:
+      Fn::Sub: 'https://${APIGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod/read'
+  PrometheusDatabaseLabel:
+    Description: The Prometheus label containing the database name
+    Value:
+      "prometheusDatabaseLabel"
+  PrometheusTableLabel:
+    Description: The Prometheus label containing the table name
+    Value:
+      "prometheusTableLabel"

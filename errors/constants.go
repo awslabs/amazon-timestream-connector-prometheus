@@ -11,6 +11,7 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the speci
 and limitations under the License.
 */
 
+// This files contains constant error messages for errors.go.
 package errors
 
 const (

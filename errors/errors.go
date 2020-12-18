@@ -11,6 +11,7 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the speci
 and limitations under the License.
 */
 
+// This file contains all the error messages and their HTTP status code the Prometheus Connector may return.
 package errors
 
 import (
@@ -102,6 +103,19 @@ func NewParseRetriesError(retries string) error {
 		message: "The value specified in the max-retries option is not one of the accepted values. " +
 			acceptedValueErrorMessage,
 	}}
+}
+
+type ParseBasicAuthHeaderError struct {
+	baseConnectorError
+}
+
+func NewParseBasicAuthHeaderError() error {
+	base := baseConnectorError{
+		statusCode: http.StatusBadRequest,
+		errorMsg:   "expected a valid AWS credentials, please check Prometheus configuration for basic auth",
+		message:    "The request must contain a valid basic authentication header, please refer to the documentation on how to configure Prometheus.",
+	}
+	return &ParseBasicAuthHeaderError{baseConnectorError: base}
 }
 
 type MissingHeaderError struct {
@@ -211,4 +225,17 @@ func NewInvalidSampleValueError(timeSeriesValue float64) error {
 			"Non-finite sample value will fail the program with fail-on-invalid-sample-value enabled.",
 	}
 	return &InvalidSampleValueError{baseConnectorError: base}
+}
+
+type SDKNonRequestError struct {
+	baseConnectorError
+}
+
+func NewSDKNonRequestError(err error) error {
+	base := baseConnectorError{
+		statusCode: http.StatusBadRequest,
+		errorMsg:   err.Error(),
+		message:    err.Error(),
+	}
+	return &SDKNonRequestError{baseConnectorError: base}
 }

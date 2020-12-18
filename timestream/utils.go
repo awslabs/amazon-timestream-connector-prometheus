@@ -11,6 +11,7 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the speci
 and limitations under the License.
 */
 
+// This file contains helper methods for logging messages.
 package timestream
 
 import (

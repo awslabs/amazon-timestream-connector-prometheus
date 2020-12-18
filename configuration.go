@@ -11,6 +11,8 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the speci
 and limitations under the License.
 */
 
+// This file contains all the standalone and AWS Lambda configuration options for Prometheus Connector, allowing main.go
+// to easily reference them when retrieving and parsing the options from the command line or environment variables.
 package main
 
 import (
@@ -36,4 +38,6 @@ var (
 	failOnInvalidSampleConfig = &configuration{flag: "fail-on-invalid-sample-value", envFlag: "fail_on_invalid_sample_value", defaultValue: "false"}
 	promlogLevelConfig        = &configuration{flag: "log.level", envFlag: "log_level", defaultValue: "info"}
 	promlogFormatConfig       = &configuration{flag: "log.format", envFlag: "log_format", defaultValue: "logfmt"}
+	certificateConfig         = &configuration{flag: "tls-certificate", envFlag: "", defaultValue: ""}
+	keyConfig                 = &configuration{flag: "tls-key", envFlag: "", defaultValue: ""}
 )

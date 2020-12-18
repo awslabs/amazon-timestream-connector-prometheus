@@ -8,13 +8,18 @@
 # or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 # CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
 
+# This script creates precompiled binaries for Linux, Darwin, and Windows and package them into tarballs.
+# This script also package the precompiled binary for Linux to a ZIP file that can be uploaded to AWS Lambda as
+# the function code.
+
 import argparse
 import logging
 import os
+import platform
 import shutil
 import subprocess
+import tarfile
 import time
-import platform
 from distutils.dir_util import copy_tree
 
 
@@ -63,44 +68,69 @@ def run_build(target_bin, connector_version):
     return file_name
 
 
-def check_binary(dir_name, bin):
+def check_binary(dir_name, binary):
     """
     Check the directory to make sure the binary has been compiled.
 
     :param dir_name: The name of the directory.
-    :param bin: The name fo the compiled binary.
+    :param binary: The name of the compiled binary.
     :return: None
     """
-    wait_time = 1
     if dir_name == "windows":
-        bin += ".exe"
-    while not os.path.exists(dir_name + "/" + bin):
+        binary += ".exe"
+    check_file(dir_name + "/" + binary)
+
+
+def check_file(file_name):
+    """
+    Check whether the file has been created.
+
+    :type file_name: str
+    :param file_name: The name of the file to check.
+    :return:
+    """
+    wait_time = 1
+    while not os.path.exists(file_name):
         if wait_time >= 256:
-            logging.error("Unable to compile the binary within the time limit of 256 seconds.")
+            logging.error("Unable to create {file} within the time limit of 256 seconds.".format(file=file_name))
             return
 
-        logging.debug("Waiting for the binary to compile.")
         time.sleep(wait_time)
         wait_time *= 2
 
 
-def zip_dir(file_name, target_bin):
+def zip_dir(file_name):
     """
     Creates a ZIP file for the binary if target OS is Linux.
 
     :type file_name: str
-    :param file_name: The binary name.
-    :type target_bin: str
-    :param target_bin: The target OS for the binary.
+    :param file_name: The name of the precompiled binary for Linux.
+    """
+    logging.debug("Creating a ZIP file for the Linux binary.")
+    shutil.make_archive(file_name, 'zip', "linux")
+
+
+def package_sam_template(linux_bin_name, source_dir, version):
+    """
+    Package all relevant artifacts for serverless deployment in a tarball.
+
+    :type linux_bin_name: str
+    :param linux_bin_name: The name of the precompiled binary for Linux.
+    :type source_dir: str
+    :param source_dir: The directory containing the SAM template and its documentation.
+    :type version: str
+    :param version: The artifact version.
     :return: None
     """
-    if target_bin == "linux":
-        if platform.system() == "Windows":
-            zip_command = "cd linux && tar -a -c -f ../{}.zip * && cd ..".format(file_name)
-        else:
-            zip_command = "cd linux; zip ../{}.zip *; cd ..".format(file_name)
-        logging.debug("Creating a zip file for linux binary")
-        subprocess.Popen(zip_command, shell=True, stdout=subprocess.PIPE)
+    tarfile_name = "timestream-prometheus-connector-serverless-application-{version}.tar.gz".format(version=version)
+    linux_zip = "{file_name}.zip".format(file_name=linux_bin_name)
+
+    with tarfile.open(tarfile_name, "w:gz") as tar:
+        for root, dirs, files in os.walk(source_dir):
+            for file in files:
+                tar.add(os.path.join(root, file), arcname=file)
+        check_file(linux_zip)
+        tar.add(linux_zip)
 
 
 def tar_dir(file_name, dir_name):
@@ -118,6 +148,27 @@ def tar_dir(file_name, dir_name):
     subprocess.Popen(tar_command, shell=True, stdout=subprocess.PIPE)
 
 
+def create_tarball(target_folder, version):
+    """
+    Create a tarball containing a precompiled binary and all documentation.
+
+    :type target_folder: str
+    :param target_folder: The temporary folder containing the precompiled binary and all documentation.
+    :type version: str
+    :param version: The version of the Prometheus Connector.
+    :return: The name of the precompiled binary.
+    """
+    create_directory(target_folder)
+    bin_name = run_build(target_folder, version)
+    if bin_name is None:
+        logging.error("Cannot create binary for packaging.")
+        return
+
+    check_binary(target_folder, bin_name)
+    tar_dir(bin_name, target_folder)
+    return bin_name
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--version", required=True, help="The connector version")
@@ -125,19 +176,15 @@ if __name__ == "__main__":
 
     connector_version = args.version
     logging.basicConfig(level=logging.INFO)
-    targets = ["windows", "linux", "darwin"]
+    targets = ["windows", "darwin"]
+    linux_file_name = ""
     try:
         for target in targets:
-            create_directory(target)
-            bin_name = run_build(target, connector_version)
-            if bin_name is None:
-                logging.error("Cannot create binary for packaging.")
-                break
+            create_tarball(target, connector_version)
 
-            check_binary(target, bin_name)
-            zip_dir(bin_name, target)
-            tar_dir(bin_name, target)
-
+        bin_name = create_tarball("linux", connector_version)
+        zip_dir(bin_name)
+        package_sam_template(bin_name, "./serverless", connector_version)
         logging.info("Done running script.")
 
     except OSError:

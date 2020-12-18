@@ -11,3 +11,9 @@ scrape_configs:
 
 remote_read:
   - url: "http://host.docker.internal:9201/read"
+    read_recent: true
+
+    basic_auth:
+      # Update the user name and password with valid IAM credentials.
+      username: accessKey
+      password: secretAccessKey

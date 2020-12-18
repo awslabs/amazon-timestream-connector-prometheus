@@ -10,8 +10,8 @@
 # and limitations under the License.
 
 # Stage 1: Build the binary
-FROM golang:1.14-alpine AS build_stage
-RUN apk add --no-cache git
+FROM amazonlinux:latest AS build_stage
+RUN yum install -y go
 
 # Set Docker image metadata
 LABEL name="timestream/timestream-prometheus-connector" \
@@ -28,14 +28,14 @@ RUN go mod download
 COPY . .
 
 # Run unit tests for main.go and client.go
-RUN CGO_ENABLED=0 go test -tags=unit -cover -timeout 30s -short -v ./timestream ./
+RUN CGO_ENABLED=0 go test -tags=unit -cover -v ./timestream ./
 
 # Build the binary for Linux.
 RUN CGO_ENABLED=0 GOOS=linux go build -o ./timestream-prometheus-connector .
 
 # Stage 2: Copy the pre-compiled Linux binary to the final image
-FROM alpine:3.9 AS copy_stage
-RUN apk add ca-certificates
+FROM amazonlinux:latest AS copy_stage
+RUN yum install -y ca-certificates
 
 COPY --from=build_stage /tmp/timestream/timestream-prometheus-connector /app/timestream/timestream-prometheus-connector
 

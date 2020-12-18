@@ -10,6 +10,10 @@ scrape_configs:
 remote_write:
   - url: "http://localhost:9201/write"
 
+    basic_auth:
+      username: accessKey
+      password: secretAccessKey
+
     write_relabel_configs:
       - source_labels: ["__name__"]
         regex: .*
@@ -20,7 +24,9 @@ remote_write:
         replacement: exampleDatabase
         target_label: PrometheusDatabaseLabel
 
-
-
 remote_read:
   - url: "http://localhost:9201/read"
+
+    basic_auth:
+      username: accessKey
+      password: secretAccessKey
