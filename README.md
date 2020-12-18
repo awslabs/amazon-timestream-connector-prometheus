@@ -20,17 +20,21 @@ This Prometheus Connector receives and sends time series data between Prometheus
 - [Developer Documentation](#developer-documentation)
   - [Building the Prometheus Connector from Source](#building-the-prometheus-connector-from-source)
   - [Building the Docker Image](#building-the-docker-image)
+  - [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates)
+    - [Creating the Certificate Authority files](#creating-the-certificate-authority-files)
+    - [Creating the Server Key and Server Certificate](#creating-the-server-key-and-server-certificate)
 - [Troubleshooting](#troubleshooting)
   - [Prometheus Connector Specific Errors](#prometheus-connector-specific-errors)
   - [Write API Errors](#write-api-errors)
   - [Query API Errors](#query-api-errors)
 - [Limitations](#limitations)
-    - [Maximum Prometheus Samples Per Remote Write Request](#maximum-prometheus-samples-per-remote-write-request)
+  - [Maximum Prometheus Samples Per Remote Write Request](#maximum-prometheus-samples-per-remote-write-request)
 - [Caveats](#caveats)
-    - [Unsupported RE2 Syntax](#unsupported-re2-syntax)
-    - [Inaccurate Prometheus Metrics](#inaccurate-prometheus-metrics)
-    - [Error Returned On Successful Ingestion](#error-returned-on-successful-ingestion)
-    - [Data Loss During Data Ingestion](#data-loss-during-data-ingestion)
+  - [Unsupported Temporary Security Credentials](#unsupported-temporary-security-credentials)
+  - [Unsupported RE2 Syntax](#unsupported-re2-syntax)
+  - [Inaccurate Prometheus Metrics](#inaccurate-prometheus-metrics)
+  - [Error Returned On Successful Ingestion](#error-returned-on-successful-ingestion)
+  - [Data Loss During Data Ingestion](#data-loss-during-data-ingestion)
 - [License](#license)
 
 # Prerequisites
@@ -55,50 +59,87 @@ To configure Prometheus to read and write to remote storage, configure the `remo
 > **NOTE**: It is recommended to use the default number of samples per write request through `max_samples_per_send`. For more details see [Maximum Prometheus Samples Per Remote Write Request](#maximum-prometheus-samples-per-remote-write-request).
 
 1. Configure Prometheus' remote read and remote write destination by setting the `url` options to the Prometheus Connector's listening URLs, e.g. `"http://localhost:9201/write"`.
-2. Configure the Amazon Timestream ingestion destination for Prometheus time series by attaching a label indicating the destination database and another label indicating the destination table for all time series. **These labels are required to be present on all Prometheus time series sent to the Prometheus Connector.** If one of the labels cannot be found on any of the time series, the Prometheus Connector will log the error and halt the program. 
 
-The required labels can be added through the `write_relabel_configs` in `prometheus.yml`.
-In the following example, each Prometheus time series will be appended with two labels, `PrometheusTableLabel` and `PrometheusDatabaseLabel` with label values `exampleTable` and `exampleDatabase` respectively.
+2. Configure the basic authentication header for Prometheus read and write requests with valid IAM credentials.
 
-```yaml
-   write_relabel_configs:
-    - source_labels: ["__name__"]
-      regex: .*
-      replacement: exampleTable
-      target_label: PrometheusTableLabel
-    - source_labels: ["__name__"]
-      regex: .*
-      replacement: exampleDatabase
-      target_label: PrometheusDatabaseLabel
-```
+    ```yaml
+    basic_auth:
+      username: accessKey
+      password: secretAccessKey
+    ```
 
-In this example, all the Prometheus time series will be ingested into exampleTable within exampleDatabase.
+    Prometheus also supports passing the password as a file, the following example has the IAM secret access key stored in secret.txt in the credentials folder:
 
-> **NOTE**: These labels will not be ingested into Amazon Timestream, the purpose of these additional labels is to provide ingestion destination information to the Prometheus Connector.
+    ```yaml
+    basic_auth:
+      username: accessKey
+      password_file: credentials/secretAccessKey.txt
+    ```
 
-For more details regarding multi-destination configuration, see the [Multi-destination Configuration](#multi-destination-configuration) section.
+    >  **NOTE**: As a security best practice, it is recommended to regularly [rotate IAM user access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html#Using_RotateAccessKey).
 
-Here is an example of `remote_write` and `remote_read` configuration:
+3. Configure the Amazon Timestream ingestion destination for Prometheus time series by attaching a label indicating the destination database and another label indicating the destination table for all time series. **These labels are required to be present on all Prometheus time series sent to the Prometheus Connector.** If one of the labels cannot be found on any of the time series, the Prometheus Connector will log the error and stop the program. 
 
-```yaml
-  remote_write:
-    - url: "http://localhost:9201/write"
+   The required labels can be added through the `write_relabel_configs` in `prometheus.yml`.
+   In the following example, each Prometheus time series will be appended with two labels, `PrometheusTableLabel` and `PrometheusDatabaseLabel` with label values `exampleTable` and `exampleDatabase` respectively.
 
+   ```yaml
       write_relabel_configs:
-        - source_labels: ["__name__"]
-          regex: .*
-          replacement: tableName
-          target_label: PrometheusTableLabel
-        - source_labels: ["__name__"]
-          regex: .*
-          replacement: databaseName
-          target_label: PrometheusDatabaseLabel
+       - source_labels: ["__name__"]
+         regex: .*
+         replacement: exampleTable
+         target_label: PrometheusTableLabel
+       - source_labels: ["__name__"]
+         regex: .*
+         replacement: exampleDatabase
+         target_label: PrometheusDatabaseLabel
+   ```
 
-  remote_read:
-  - url: "http://localhost:9201/read"
-```
+   In this example, all the Prometheus time series will be ingested into exampleTable within exampleDatabase.
 
-See a full sample in [simple-example.yml](./documentation/example/simple-example.yml).
+   > **NOTE**: These labels will not be ingested into Amazon Timestream, the purpose of these additional labels is to provide ingestion destination information to the Prometheus Connector.
+
+   For more details regarding multi-destination configuration, see the [Multi-destination Configuration](#multi-destination-configuration) section.
+
+4. It is recommended to secure the Prometheus requests with TLS encryption. This can be achieved by specifying the certificate authority file the `tls_config` section for Prometheus' remote read and remote write configuration. To generate self-signed certificates during development see the [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates) section.
+
+    Here is an example of `remote_write` and `remote_read` configuration with TLS, where `RootCA.pem` is within the same directory as the Prometheus configuration file:
+
+    ```yaml
+    remote_write:
+      - url: "https://localhost:9201/write"
+    
+        tls_config:
+          # Ensure ca_file is a valid file path pointing to the CA certificate.
+          ca_file: RootCA.pem
+  
+        basic_auth:
+          username: accessKey
+          password: secretAccessKey
+  
+        write_relabel_configs:
+          - source_labels: ["__name__"]
+            regex: .*
+            replacement: tableName
+            target_label: PrometheusTableLabel
+          - source_labels: ["__name__"]
+            regex: .*
+            replacement: databaseName
+            target_label: PrometheusDatabaseLabel
+
+    remote_read:
+      - url: "https://localhost:9201/read"
+    
+        basic_auth:
+            username: accessKey
+            password: secretAccessKey
+    
+        tls_config:
+            # Ensure ca_file is a valid file path pointing to the CA certificate.
+            ca_file: RootCA.pem
+    ```
+
+See a full example without TLS configuration in [simple-example.yml](./documentation/example/simple-example.yml).
 
 ### Run with Precompiled Binaries
 
@@ -106,11 +147,27 @@ Run the precompiled binaries with required arguments `database-label` and `table
 
 | Platform | Command                                                      |
 | -------- | ------------------------------------------------------------ |
-| Linux    | `./timestream-prometheus-connector-linux-amd64-1.0.2 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel` |
-| MacOS    | `./timestream-prometheus-connector-darwin-amd64-1.0.2 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel` |
-| Windows  | `timestream-prometheus-connector-windows-amd64-1.0.2 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel` |
+| Linux    | `./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel` |
+| MacOS    | `./timestream-prometheus-connector-darwin-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel` |
+| Windows  | `timestream-prometheus-connector-windows-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel` |
 
 The arguments `database-label` and `table-label` should match the label name `prometheus.yml` set in the previous section [Prometheus Configuration](#prometheus-configuration), which is `PrometheusDatabaseLabel` and `PrometheusTableLabel` in this example.
+
+It is recommended to secure the Prometheus requests with TLS encryption. To enable TLS encryption:
+
+1. Specify the server certificate and the server private key through the `tls-certificate` and `tls-key` configuration options. An example for MacOS is as follows:
+
+   ```shell
+   ./timestream-prometheus-connector-darwin-amd64-1.1.0 \
+   --database-label=PrometheusDatabaseLabel \
+   --table-label=PrometheusTableLabel \
+   --tls-certificate=serverCertificate.crt \
+   --tls-key=serverPrivateKey.key
+   ```
+
+2. Ensure the certificate authority file has been specified in the `tls_config` section within Prometheus' configuration file, see [Prometheus Configuration](#prometheus-configuration) for an example.
+
+To generate self-signed certificates during development see [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates).
 
 For more examples on configuring the Prometheus Connector see [Configuration Options](#configuration-options).
 
@@ -129,16 +186,13 @@ Follow these steps to resolve:
 ### Run with Docker Image
 Load the Docker image by the following command:
 ```shell script
-docker load < timestream-prometheus-connector-docker-image-1.0.2.tar.gz
+docker load < timestream-prometheus-connector-docker-image-1.1.0.tar.gz
 ```
-
-To run the Docker image, credentials need to be passed to the Docker container, one option is to mount the AWS credentials to a volume in the Docker container with the `-v` flag such as the following:
 
 - **Linux and MacOS**
 
   ```shell
   docker run \
-  -v $HOME/.aws/credentials:/root/.aws/credentials:ro \
   -p 9201:9201 \
   timestream-prometheus-connector-docker \
   --database-label=PrometheusDatabaseLabel \
@@ -149,12 +203,47 @@ To run the Docker image, credentials need to be passed to the Docker container, 
 
   ```shell
   docker run ^
-  -v "%USERPROFILE%/.aws/credentials:/root/.aws/credentials:ro" ^
   -p 9201:9201 ^
   timestream-prometheus-connector-docker ^
   --database-label=PrometheusDatabaseLabel ^
   --table-label=PrometheusTableLabel
   ```
+
+It is recommended to secure the Prometheus requests with HTTPS with TLS encryption. To enable TLS encryption:
+
+1. Mount the volume containing the server certificate and the server private key to a volume on the Docker container, then specify the path to the certificate and the key through the `tls-certificate` and `tls-key` configuration options. Note that the path specified must be with respect to the Docker container.
+
+   In the following examples, server certificate and server private key are stored in the `$HOME/tls` on Linux and MacOS or `%USERPROFILE%/tls` on Windows, but are mounted to `/root/tls` on the Docker container:
+
+   - **Linux and MacOS**
+
+     ```shell
+     docker run \
+     -v $HOME/tls:/root/tls:ro \
+     -p 9201:9201 \
+     timestream-prometheus-connector-docker \
+     --database-label=PrometheusDatabaseLabel \
+     --table-label=PrometheusTableLabel \
+     --tls-certificate=/root/tls/serverCertificate.crt \
+     --tls-key=/root/tls/serverPrivateKey.key
+     ```
+
+   - **Windows**
+
+     ```shell
+     docker run ^
+     -v "%USERPROFILE%/tls:/root/tls/:ro" ^
+     -p 9201:9201 ^
+     timestream-prometheus-connector-docker ^
+     --database-label=PrometheusDatabaseLabel ^
+     --table-label=PrometheusTableLabel ^
+     --tls-certificate=/root/tls/serverCertificate.crt ^
+     --tls-key=/root/tls/serverPrivateKey.key
+     ```
+
+2. Ensure the certificate authority file has been specified in the `tls_config` section within Prometheus' configuration file, see [Prometheus Configuration](#prometheus-configuration) for an example.
+
+To generate self-signed certificates during development see [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates).
 
 To configure the `web.listen-address` option when running the Prometheus Connector through a Docker image, use the `-p` flag to expose the custom endpoint. The following example listens on the custom endpoint `localhost:3080`:
 
@@ -162,7 +251,6 @@ To configure the `web.listen-address` option when running the Prometheus Connect
 
   ```shell
   docker run \
-  -v $HOME/.aws/credentials:/root/.aws/credentials:ro \
   -p 3080:3080 \
   timestream-prometheus-connector-docker \
   --database-label=PrometheusDatabaseLabel \
@@ -174,7 +262,6 @@ To configure the `web.listen-address` option when running the Prometheus Connect
 
   ```shell
   docker run ^
-  -v "%USERPROFILE%/.aws/credentials:/root/.aws/credentials:ro" ^
   -p 3080:3080 ^
   timestream-prometheus-connector-docker ^
   --database-label=PrometheusDatabaseLabel ^
@@ -227,44 +314,19 @@ Running the Prometheus Connector on AWS Lambda allows for a serverless workflow.
 
 10. Enter a policy name.
 
-11. Follow steps 5 to 8 to create the following policy providing Amazon Timestream access to the AWS Lambda function:
+11. Back on the `Grant permissions` page, select the checkbox for the newly created policy.
 
-     ```json
-     {
-         "Version": "2012-10-17",
-         "Statement": [
-             {
-                 "Effect": "Allow",
-                 "Action": [
-                     "timestream:WriteRecords",
-                     "timestream:Select"
-                 ],
-                 "Resource": "arn:aws:timestream:${AWS::Region}:${AWS::AccountId}:database/*"
-             },
-             {
-                 "Effect": "Allow",
-                 "Action": [
-                     "timestream:DescribeEndpoints"
-                 ],
-                 "Resource": "*"
-             }
-         ]
-     }
-     ```
+12. Click `Next:Review`.
 
-12. Back on the `Grant permissions` page, select the checkbox for the newly created policies.
+13. Enter a name for the role, this example will use `LambdaTimestreamFullAccessRole`.
 
-13. Click `Next:Review`.
+14. After creating the role successfully, click `Roles` under `Access management` and choose the role created to see the details.
 
-14. Enter a name for the role, this example will use `LambdaTimestreamFullAccessRole`.
+15. Take note of the `Role ARN`, this is required when creating a policy to allow the current user access to the role.
 
-15. After creating the role successfully, click `Roles` under `Access management` and choose the role created to see the details.
+16. On the Summary page, select the `Trust relationships` tab, select `Edit Trust Relationship`.
 
-16. Take note of the `Role ARN`, this is required when creating a policy to allow the current user access to the role.
-
-17. On the Summary page, select the `Trust relationships` tab, select `Edit Trust Relationship`.
-
-18. Paste the following to `Policy Document` to allow API gateway to access the policy.
+17. Paste the following to `Policy Document` to allow API gateway to access the policy.
 
      ```json
      {
@@ -284,7 +346,7 @@ Running the Prometheus Connector on AWS Lambda allows for a serverless workflow.
      }
      ```
 
-19. Click `Update Trust Policy`.
+18. Click `Update Trust Policy`.
 
 To provide access to this newly created role, add a permission to the current user with the following steps:
 1. Open the [AWS management console](https://console.aws.amazon.com/iam/) for IAM.
@@ -341,7 +403,7 @@ To provide access to this newly created role, add a permission to the current us
 Go to [Configuration Options](#Configuration-options) to see more information.
 9. Scroll down to basic settings.
 10. Click `Edit`.
-11. In the `Handler` section, enter the name of the Amazon Timestream Prometheus Connector ZIP file, which will be `timetream-prometheus-connector-1.0.2`.
+11. In the `Handler` section, enter the name of the Amazon Timestream Prometheus Connector ZIP file, which will be `timetream-prometheus-connector-1.1.0`.
 12. Click `Save`.
 
 #### Create the API on Amazon API Gateway
@@ -369,21 +431,31 @@ Go to [Configuration Options](#Configuration-options) to see more information.
 15. Click `Next` again.
 16. Click `Create` will redirect the page to `API Details`.
 17. Take note of the invoke URL, this URL is required to set up Prometheus' remote read and write URL.
+18. It is highly recommended having TLS encryption enabled during production. See [Configuring mutual TLS authentication for an HTTP API](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-mutual-tls.html).
 
-#### Configure Prometheus for Lambda
+#### Configure Prometheus for AWS Lambda
 
-1. Open `prometheus.yml` .
-2. Add the following sections to the end of the file, where `{{invoke_url}}` can be found at the `API Details` section on API Gateway.
+The process to configure Prometheus for AWS Lambda requires the same steps listed in [Prometheus Configuration](#prometheus-configuration). 
 
-   ```YAML
-   remote_write:
-     - url: "{{invoke_url}}/write"
-   
-   remote_read:
-     - url: "{{invoke_url}}/read"
-   ```
+> **NOTE**: Ensure the remote write and the remote read URLs are set to the invoke URLS.
 
-   These sections configure Prometheus to send write requests to the remote write URL and read data from the remote read URL.
+The following example points the remote write and the remote read URLs to an API with ID foo9l30 and the deployment stage `dev`. 
+It is highly recommended having TLS encryption enabled during production, the following example also specifies the root certificate authority file for TLS encryption, which requires configuring the TLS encryption on API Gateway. See [Configuring mutual TLS authentication for an HTTP API](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-mutual-tls.html).
+```YAML
+remote_write:
+  - url: "https://foo9l30.execute-api.us-east-1.amazonaws.com/dev/write"
+      
+    tls_config:
+      # Ensure ca_file is a valid file path pointing to the CA certificate.
+      ca_file: RootCA.pem
+
+remote_read:
+  - url: "https://foo9l30.execute-api.us-east-1.amazonaws.com/dev/read"
+  
+    tls_config:
+      # Ensure ca_file is a valid file path pointing to the CA certificate.
+      ca_file: RootCA.pem
+```
 
 #### Configure Logging for API Gateway (Optional)
 
@@ -470,8 +542,10 @@ The database-label name and table-label name are required for data ingestion and
 |--------|-------------|------------|---------|---------|
 | `database-label` | `database_label` |  The Prometheus label containing the database name. | Yes | `None` |
 | `table-label` | `table_label` |  The Prometheus label containing the table name. | Yes | `None` |
-| `region` | `region` | The signing region for the Amazon Timestream service. | No | `us-east-1` |
-| `web.listen-address` | `N/A` |  The endpoint to listen to for write requests and read requests sent from Prometheus. | No | `:9201` |
+| `region` | `region` |  The signing region for the Amazon Timestream service. | No | `us-east-1` |
+| `tls-certificate`    | `N/A`            | The path to the TLS server certificate file. This is required to enable HTTPS. If unspecified, HTTP will be used. | No          | `None`        |
+| `tls-key`            | `N/A`            | The path to the TLS server private key file. This is required to enable HTTPS. If unspecified, HTTP will be used. | No          | `None`        |
+| `web.listen-address` | `N/A` | The endpoint to listen to for write requests and read requests sent from Prometheus. | No | `:9201` |
 | `web.telemetry-path` | `N/A` | The path containing metrics collected by the Prometheus Connector, such as `ignoredSamples`. This allows Prometheus to scrape and monitor data from the specified telemetry-path. | No | `/metrics` |
 
 > **NOTE**: `web.listen-address` and `web.telemetry-path` configuration options are not available when running the Prometheus Connector on AWS Lambda.
@@ -482,21 +556,28 @@ The database-label name and table-label name are required for data ingestion and
 
    | Runtime              | Command                                                      |
    | -------------------- | ------------------------------------------------------------ |
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.2 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --region=us-west-2` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --region=us-west-2` |
    | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={database_label=PrometheusDatabaseLabel,table_label=PrometheusTableLabel,region=us-west-2}"` |
 
-2. Configure the Prometheus Connector to listen for Prometheus requests on `http://localhost:3080`.
+2. Configure the Prometheus Connector listen for requests on an HTTPS server `https://localhost:9201` with TLS encryption.
 
    | Runtime              | Command                                                      |
    | -------------------- | ------------------------------------------------------------ |
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.2 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --web.listen-address=:3080` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --tls-certificate=serverCertificate.crt --tls-key=serverPrivateKey.key` |
    | AWS Lambda Function  | `N/A`                                                        |
 
-3. Configure the Prometheus Connector to listen for Prometheus requests on `http://localhost:3080` and serve collected metrics to `http://localhost:3080/timestream-metrics`.
+3. Configure the Prometheus Connector to listen for Prometheus requests on `http://localhost:3080`.
 
    | Runtime              | Command                                                      |
    | -------------------- | ------------------------------------------------------------ |
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.2 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --web.listen-address=:3080 --web.telemetry-path=/timestream-metrics` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --web.listen-address=:3080` |
+   | AWS Lambda Function  | `N/A`                                                        |
+
+4. Configure the Prometheus Connector to listen for Prometheus requests on `http://localhost:3080` and serve collected metrics to `http://localhost:3080/timestream-metrics`.
+
+   | Runtime              | Command                                                      |
+   | -------------------- | ------------------------------------------------------------ |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --web.listen-address=:3080 --web.telemetry-path=/timestream-metrics` |
    | AWS Lambda Function  | `N/A`                                                        |
 
 ### Retry Configuration Options
@@ -513,7 +594,7 @@ Configure the Prometheus Connector to retry up to 10 times upon recoverable erro
 
 | Runtime              | Command                                                      |
 | -------------------- | ------------------------------------------------------------ |
-| Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.2 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --max-retries=10` |
+| Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --max-retries=10` |
 | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={database_label=PrometheusDatabaseLabel,table_label=PrometheusTableLabel,max_retries=10}"` |
 
 ### Logger Configuration Options
@@ -541,21 +622,21 @@ To quickly spot and resolve issues that may be caused by ignored Prometheus time
 
    | Runtime              | Command                                                      |
    | -------------------- | ------------------------------------------------------------ |
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.2 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --enable-logging=false` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --enable-logging=false` |
    | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusPrometheus Connector --environment "Variables={database_label=PrometheusDatabaseLabel,table_label=PrometheusTableLabel,enable_logging=false}"` |
 
 2. Toggle the Prometheus Connector to halt on: <br />- label names exceeding the maximum length supported by Amazon Timestream;<br />- Prometheus time series with non-finite values.
 
    | Runtime              | Command                                                      |
    | -------------------- | ------------------------------------------------------------ |
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.2 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --fail-on-long-label=true --fail-on-invalid-sample=true` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --fail-on-long-label=true --fail-on-invalid-sample=true` |
    | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={database_label=PrometheusDatabaseLabel,table_label=PrometheusTableLabel,fail_on_long_label=true, fail_on_invalid_sample_value=true}"` |
 
 3. Configure the Prometheus Connector to output the logs at debug level and in JSON format.
 
     | Runtime              | Command                                                      |
     | -------------------- | ------------------------------------------------------------ |
-    | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.2 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --log.level=debug --log.format=json` |
+    | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --log.level=debug --log.format=json` |
     | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={database_label=PrometheusDatabaseLabel,table_label=PrometheusTableLabel,log_level=debug, log_format=json}"` |
 
 ### Multi-destination Configuration
@@ -636,8 +717,6 @@ This example does the following for all time series sent to the remote endpoint 
 
 See the full example in [multi-destination-example.yml](documentation/example/multi-destination-example.yml).
 
-
-
 ## Relabel Long Labels
 
 If a Prometheus time series has a metric name exceeding the maximum supported length, the Prometheus Connector will **by default** log and ignore any of those Samples.
@@ -685,6 +764,106 @@ to provide the credentials through command-line flags. This prevents sensitive d
 ## Building the Docker Image
 1. Navigate to the repository’s root directory on a command-line interface.
 2. Run the following command to build the image: `docker build . -t timestream-prometheus-connector-docker`.
+
+## Creating Self-signed TLS Certificates
+
+The following steps generate self-signed TLS certificates using OpenSSL.
+
+> **NOTE**: Self-signed certificates **shall** not be used during production, they should only be used during development.
+
+### Creating the Certificate Authority files
+
+Use the following command to generate a private key and the root certificate file for the certificate authority.
+
+```shell
+openssl req -x509 -nodes -new -sha256 -days 365 -newkey rsa:2048 -keyout RootCA.key -out RootCA.pem
+```
+
+This command will prompt the user to enter some information for the certificate. An example of the output is as follows:
+
+```shell
+certificates ❯ openssl req -x509 -nodes -new -sha256 -days 365 -newkey rsa:2048 -keyout RootCA.key -out RootCA.pem
+Generating a 2048 bit RSA private key
+............................+++
+................+++
+writing new private key to 'RootCA.key'
+-----
+You are about to be asked to enter information that will be incorporated
+into your certificate request.
+What you are about to enter is what is called a Distinguished Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter '.', the field will be left blank.
+-----
+Country Name (2 letter code) []:US
+State or Province Name (full name) []:Washington
+Locality Name (eg, city) []:Seattle
+Organization Name (eg, company) []:Amazon Web Services
+Organizational Unit Name (eg, section) []:
+Common Name (eg, fully qualified host name) []:Private-Root-CA
+Email Address []:
+certificates ❯ 
+```
+
+To provide all the information directly with the `-subj` flag. An example is as follows:
+
+```shell
+openssl req -x509 -nodes -new -sha256 -days 365 -newkey rsa:2048 -keyout RootCA.key -out RootCA.pem -subj "/C=US/ST=Washington/L=Seattle/O=Amazon Web Services/CN=Private-Root-CA"
+```
+
+### Creating the Server Key and Server Certificate
+
+Use the following command to generate a server private key and a certificate signing request:
+
+```shell
+openssl req -days 365 -nodes -newkey rsa:2048 -keyout serverPrivateKey.key -out serverCertificateSigningRequest.csr
+```
+
+This command will prompt the user to enter some information for the certificate. An example of the output is as follows:
+
+```shell
+certificates ❯ openssl req -days 365 -nodes -newkey rsa:2048 -keyout serverPrivateKey.key -out serverCertificateSigningRequest.csr
+Generating a 2048 bit RSA private key
+....................................................................................................................................................................................................+++
+........................+++
+writing new private key to 'serverPrivateKey.key'
+-----
+You are about to be asked to enter information that will be incorporated
+into your certificate request.
+What you are about to enter is what is called a Distinguished Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter '.', the field will be left blank.
+-----
+Country Name (2 letter code) []:US
+State or Province Name (full name) []:Washington
+Locality Name (eg, city) []:Seattle
+Organization Name (eg, company) []:Amazon Web Services
+Organizational Unit Name (eg, section) []:
+Common Name (eg, fully qualified host name) []:localhost
+Email Address []:
+certificates ❯ 
+```
+
+To provide all the information directly with the `-subj` flag. An example is as follows:
+
+```shell
+openssl req -days 365 -nodes -newkey rsa:2048 -keyout serverPrivateKey.key -out serverCertificateSigningRequest.csr -subj "/C=US/ST=Washington/L=Seattle/O=Amazon Web Services/CN=localhost"
+```
+
+To associate the host name to the server certificate, create a `domain.ext` file with the following content:
+```
+subjectAltName = DNS:localhost
+```
+Store the file at the same location as the `serverCertificateSigningRequest.csr`. This `domain.ext` will be used when generating the self-signed server certificate.
+
+> **NOTE**: The value for DNS is set to **localhost**. This is required when running the Prometheus Connector from a Docker image or from the precompiled binaries.
+
+Use the following command to generate the self-signed server certificate:
+
+```shell
+openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out serverCertificate.crt -CA RootCA.pem -CAkey RootCA.key -CAcreateserial -extfile domain.ext
+```
 
 # Troubleshooting
 ## Prometheus Connector Specific Errors
@@ -833,7 +1012,14 @@ Ingesting more time series than the `Records per WriteRecords API request` value
 It is recommended to use the default value for `max_samples_per_send` in Prometheus' [remote write configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write).
 
 # Caveats
+### Unsupported Temporary Security Credentials
+
+All Prometheus requests sent to the Prometheus Connector will be authorized through the AWS SDK for Go. The Prometheus Connector only supports passing the IAM user access key and the IAM user secret access key through the basic authentication header.
+
+It is recommended to regularly [rotate IAM user access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html#Using_RotateAccessKey).
+
 ### Unsupported RE2 Syntax
+
 Prometheus follows the RE2 syntax https://github.com/google/re2/wiki/Syntax, while Amazon Timestream supports the Java regex pattern. 
 Any query with unsupported regex syntax will result in a 400 Bad Request status code.
 
@@ -849,7 +1035,7 @@ Prometheus tracks all time series successfully sent to the remote write storage 
 
 The following edge case may occur due to the multi-destination data ingestion feature:
 
-- A 400 Bad Request status code is returned to Prometheus even after all Prometheus time series in the write request has been successfully ingested
+- A 400 Bad Request status code is returned to Prometheus even after all Prometheus time series in the write request has been successfully ingested.
 
 ### Data Loss During Data Ingestion
 

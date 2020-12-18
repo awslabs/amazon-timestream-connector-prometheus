@@ -1,23 +1,19 @@
 # Getting Started Guide for Amazon Timestream Prometheus Connector
 
 ## Table of Contents
-  * [Overview](#overview)
-  * [Terminology](#terminology)
-  * [Configure Amazon Timestream](#configure-amazon-timestream)
-    + [Configure AWS Credentials](#configure-aws-credentials)
-    + [Create a database and table on Amazon Timestream](#create-a-database-and-table-on-amazon-timestream)
-  * [Configure Prometheus Connector](#configure-prometheus-connector)
-    + [Linux Binary](#linux-binary)
-    + [Docker Image](#docker-image)
-      - [Download and Install Docker](#download-and-install-docker)
-      - [Download the Prometheus Connector Docker Image](#download-the-prometheus-connector-docker-image)
-      - [Load the Prometheus Connector Docker Image](#load-the-prometheus-connector-docker-image)
-      - [Run the Prometheus Connector Docker Image](#run-the-prometheus-connector-docker-image)
-  * [Configure Prometheus](#configure-prometheus)
-  * [Verification](#verification)
-  * [Troubleshooting](#troubleshooting)
-  * [Limitation](#limitation)
-  * [License](#license)
+- [Overview](#overview)
+- [Terminology](#terminology)
+- [Configure Amazon Timestream](#configure-amazon-timestream)
+   - [Configure AWS Credentials](#configure-aws-credentials)
+   - [Create a database and table on Amazon Timestream](#create-a-database-and-table-on-amazon-timestream)
+- [Configure Prometheus Connector](#configure-prometheus-connector)
+   - [Linux Binary](#linux-binary)
+   - [Docker Image](#docker-image)
+- [Configure Prometheus](#configure-prometheus)
+   - [Configure TLS Encryption in Prometheus](#configure-tls-encryption-in-prometheus)
+- [Verification](#verification)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ## Overview
 
@@ -67,11 +63,13 @@ This getting started guide defines the following terms:
 
 ## Configure Prometheus Connector
 
-Users can run the Prometheus Connector with precompiled Linux binary or Docker image.
+Users can run the Prometheus Connector with precompiled Linux binary or Docker image. For both methods, the Prometheus Connector must have the `database-label` and `table-label` configured.
+The `database-label` and `table-label` options specify the ingestion and query destination for all Prometheus metrics. The values of these options correspond to the Prometheus label names and not the Amazon Timestream databases and tables. 
+For more information, see [Multi-destination Configuration](README.md#multi-destination-configuration).
 
 ### Linux Binary
 
-1. Download the tarball containing the precompiled binary for Linux named `timestream-prometheus-connector-linux-amd64-1.0.2.tar.gz`.
+1. Download the tarball containing the precompiled binary for Linux named `timestream-prometheus-connector-linux-amd64-1.1.0.tar.gz`.
 2. Extract the tarball and navigate to the extracted folder by running the following commands in a terminal:
     ```shell script
     tar xvfz timestream-prometheus-connector-*.tar.gz
@@ -79,8 +77,15 @@ Users can run the Prometheus Connector with precompiled Linux binary or Docker i
     ```
 3. Run the binary with required arguments `database-label` and `table-label`.
     ```shell script
-    ./timestream-prometheus-connector-linux-amd64-1.0.2 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel
+    ./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel
     ```
+
+   It is recommended to enable TLS encryption between Prometheus and the Prometheus Connector. To enable TLS encryption, use the following command to run the binary instead:
+   ```shell
+   ./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --tls-certificate=serverCertificate.crt --tls-key=serverPrivateKey.key
+   ```
+   This command assumes the TLS server certificate and the server secret key are stored in the same directory as the Prometheus Connector. 
+   If the files are in a different location, specify the path to the files instead.
 
 ### Docker Image
 
@@ -92,29 +97,27 @@ Follow the instructions for the corresponding platform to download and install D
 * **Linux** &mdash; https://docs.docker.com/engine/install/
   
 #### Download the Prometheus Connector Docker Image
-1. Download the Prometheus Connector Docker image named `timestream-prometheus-connector-docker-image-1.0.2.tar.gz`.
+1. Download the Prometheus Connector Docker image named `timestream-prometheus-connector-docker-image-1.1.0.tar.gz`.
 2. Store the Docker image in a directory.
 
 #### Load the Prometheus Connector Docker Image
 1. Navigate to the directory containing the Docker image on a command-line interface.
 2. Load the Docker image with the following command:
     ```shell script
-    docker load < timestream-prometheus-connector-docker-image-1.0.2.tar.gz
+    docker load < timestream-prometheus-connector-docker-image-1.1.0.tar.gz
     ```
 #### Run the Prometheus Connector Docker Image
 * **Linux and MacOS** &mdash; Run the Docker image with the following command:
     ```shell script
     docker run \
-    -v $HOME/.aws/credentials:/root/.aws/credentials:ro \
     -p 9201:9201 \
     timestream-prometheus-connector-docker \
-    --database-label=PrometheusDatabaseLabel \ 
+    --database-label=PrometheusDatabaseLabel \
     --table-label=PrometheusTableLabel 
     ```
 * **Windows** &mdash; Run the Docker image with the following command:
     ```shell script
     docker run ^
-    -v "%USERPROFILE%/.aws/credentials:/root/.aws/credentials:ro" ^
     -p 9201:9201 ^
     timestream-prometheus-connector-docker ^
     --database-label=PrometheusDatabaseLabel ^
@@ -122,9 +125,40 @@ Follow the instructions for the corresponding platform to download and install D
     ```
   
 The command does the following:
-1. Mount the AWS credentials located at `$HOME/.aws/credentials` or `%USERPROFILE%/.aws/credentials` on the Docker host to a volume in the Docker container `/root/.aws/credentials:ro`.
-2. Publish port 9201 in the Docker container to port 9201 in the Docker host. This allows services outside of the Docker container to access the connector running on port 9201 in the Docker container.
-3. Run the docker image named `timestream-prometheus-connector-docker` with required configuration options `database-label` and `table-label`.
+1. Publish port 9201 in the Docker container to port 9201 in the Docker host. This allows services outside of the Docker container to access the connector running on port 9201 in the Docker container.
+2. Run the docker image named `timestream-prometheus-connector-docker` with required configuration options `database-label` and `table-label`.
+
+It is recommended to enable TLS encryption between Prometheus and the Prometheus Connector. To enable TLS encryption, use the following command to run the Docker image:
+
+   - **Linux and MacOS**
+
+     ```shell
+     docker run \
+     -v $HOME/tls:/root/tls:ro \
+     -p 9201:9201 \
+     timestream-prometheus-connector-docker \
+     --database-label=PrometheusDatabaseLabel \
+     --table-label=PrometheusTableLabel \
+     --tls-certificate=/root/tls/serverCertificate.crt \
+     --tls-key=/root/tls/serverPrivateKey.key
+     ```
+
+   - **Windows**
+
+     ```shell
+     docker run ^
+     -v "%USERPROFILE%/tls:/root/tls/:ro" ^
+     -p 9201:9201 ^
+     timestream-prometheus-connector-docker ^
+     --database-label=PrometheusDatabaseLabel ^
+     --table-label=PrometheusTableLabel ^
+     --tls-certificate=/root/tls/serverCertificate.crt ^
+     --tls-key=/root/tls/serverPrivateKey.key
+     ```
+     
+   This command:
+   1. Assumes the server certificate and server private key are stored in the `$HOME/tls` on Linux and MacOS or `%USERPROFILE%/tls` on Windows, but are mounted to `/root/tls` on the Docker container;
+   2. Mounts the volume containing the server certificate and the server private key to a volume on the Docker container, then specify the path to the certificate and the key through the `tls-certificate` and `tls-key` configuration options. Note that the path specified must be with respect to the Docker container.
 
 ## Configure Prometheus
 
@@ -149,22 +183,34 @@ The command does the following:
    
        queue_config:
          max_samples_per_send: 100
+      
+       # Replace the values for username and password with valid IAM user access key and IAM user secret access key.
+       basic_auth:
+         username: accessKey
+         password: secretAccessKey
    
        write_relabel_configs:
-       # Configure ingestion destination.
-       - source_labels: ["__name__"]
-         regex: .*
-         replacement: exampleDatabase
-         target_label: PrometheusDatabaseLabel
-       - source_labels: ["__name__"]
-         regex: .*
-         replacement: exampleTable
-         target_label: PrometheusTableLabel
-   
+         # Configure ingestion destination.
+         - source_labels: ["__name__"]
+           regex: .*
+           replacement: exampleDatabase
+           target_label: PrometheusDatabaseLabel
+         - source_labels: ["__name__"]
+           regex: .*
+           replacement: exampleTable
+           target_label: PrometheusTableLabel
+     
    remote_read:
      - url: "http://localhost:9201/read"
+   
+       # Replace the values for username and password with valid IAM user access key and IAM user secret access key.
+       basic_auth:
+         username: accessKey
+         password: secretAccessKey
    ```
-
+   
+   > **NOTE**: Each Prometheus request must be authorized. Since the Prometheus Connector does not support temporary security credentials, it is recommended to use regularly [rotate IAM user access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html#Using_RotateAccessKey).
+   
    This configuration serves the following functions:
 
    1. Configures Prometheus' remote storage destinations by setting the `url` options to the remote read and remote write endpoints, e.g. `"http://localhost:9201/write"`.
@@ -172,10 +218,55 @@ The command does the following:
 
    For an example of a complete Prometheus YAML file, see [getting_started.yml](./documentation/example/getting_started.yml).
 
-5. Back to the command-line interface, run the precompiled binary for Prometheus with the following command:
+5. It is recommended to configure TLS encryption between Prometheus and the Prometheus Connector. To do so, use the `tls_config` section to specify the path to a certificate authority file, see an example in [Configure TLS Encryption in Prometheus](#configure-tls-encryption-in-prometheus).
+
+6. Back to the command-line interface, run the precompiled binary for Prometheus with the following command:
 
    1. **Windows** &mdash; `prometheus --config.file=prometheus.yml`
    2. **Linux and MacOS** &mdash; `./prometheus --config.file=prometheus.yml`
+   
+### Configure TLS Encryption in Prometheus
+
+It is recommended to secure the Prometheus requests with TLS encryption. This can be achieved by specifying the certificate authority file the `tls_config` section for Prometheus' remote read and remote write configuration. To generate self-signed certificates during development see the [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates) section.
+
+Here is an example of `remote_write` and `remote_read` configuration with TLS, where `RootCA.pem` is within the same directory as the Prometheus configuration file:
+
+```yaml
+remote_write:
+  - url: "https://localhost:9201/write"
+  
+   tls_config:
+      # Ensure ca_file is a valid file path pointing to the CA certificate.
+      ca_file: RootCA.pem
+  
+   basic_auth:
+      # Replace the values for username and password with valid IAM user access key and IAM user secret access key.
+      username: accessKey
+      password: secretAccessKey
+  
+   write_relabel_configs:
+      # Configure ingestion destination.
+      - source_labels: ["__name__"]
+        regex: .*
+        replacement: exampleDatabase
+        target_label: PrometheusDatabaseLabel
+      - source_labels: ["__name__"]
+        regex: .*
+        replacement: exampleTable
+        target_label: PrometheusTableLabel
+
+remote_read:
+  - url: "https://localhost:9201/read"
+  
+  basic_auth:
+     # Replace the values for username and password with valid IAM user access key and IAM user secret access key.
+     username: accessKey
+     password: secretAccessKey
+  
+  tls_config:
+     # Ensure ca_file is a valid file path pointing to the CA certificate.
+     ca_file: RootCA.pem
+```
 
 ## Verification
 
@@ -255,24 +346,15 @@ The command does the following:
     ```
     This error may occur when no AWS credentials can be found. Follow the steps in [Configure AWS Credentials](#configure-aws-credentials) to set up the credentials.
 
-2. Expired Token Exception
-
-    Error occurred when running the Linux binary with the following message:
-    ```log
-    level=error ts=2020-11-21T00:44:40.199Z caller=utils.go:23 message="Unable to create a query client." error="ExpiredTokenException: The security token included in the request is expired\n\tstatus code: 403, request id: 1adc7278-cc69-46f2-a13c-65bf3d8f50f1"
-    ```
-    This error message may occur if [temporary security credentials](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp.html) are used to run the Prometheus Connector. To update the temporary security credentials see [Requesting temporary security credentials](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_request.html).
-   
-3. Access Denied Exception
+2. Access Denied Exception
     
     Error occurred when running the Linux binary with the following message:
     ```log
     level=error ts=2020-11-23T19:58:49.998Z caller=utils.go:23 message="Unable to create a query client." error="AccessDeniedException: User: arn:aws:iam::0000000000:user/username is not authorized to perform: timestream:DescribeEndpoints with an explicit deny"
     ```
     1. Ensure the account running the Prometheus Connector has sufficient permissions to access Timestream. See all the IAM Policies for Timestream on [How Amazon Timestream Works with IAM](https://docs.aws.amazon.com/timestream/latest/developerguide/security_iam_service-with-iam.html).
-    2. Ensure you are using a temporary security credentials to access Amazon Timestream. See how to use temporary security credentials to access AWS resources with AWS CLI on [Using temporary credentials](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html#using-temp-creds-sdk-cli). 
     
-4. Conflicting Resources Error
+3. Conflicting Resources Error
     
     Error occurred when running the Docker image with the following message:
     ```log
@@ -285,7 +367,6 @@ The command does the following:
     1. Run the connector with a custom listen-address with the ` --web.listen-address` option and with the updated `-p` flag to publish the custom port. An example running the Docker container on port 3080 is as follows:
         ```shell script
         docker run \
-        -v $HOME/.aws/credentials:/root/.aws/credentials:ro \
         -p 3080:3080 \
         timestream-prometheus-connector-docker \
         --database-label=PrometheusDatabaseLabel \ 
@@ -295,27 +376,24 @@ The command does the following:
     If the port is used by a Docker container that could be removed:
     1. Use [docker rm](https://docs.docker.com/engine/reference/commandline/rm/) to remove the container.
     
-5. Invalid Mount Path Error
+4. Invalid Mount Path Error
 
    Error occurred when running the Docker image with the following message:
+   %USERPROFILE%/tls:/root/tls/:ro
    ```log
-   docker: Error response from daemon: invalid volume specification: '/host_mnt/c/Users/<user_name>/.aws/credentials: .aws/credentials:ro': 
-   invalid mount config for type "bind": invalid mount path: ' .aws/credentials' mount path must be absolute.
+   docker: Error response from daemon: invalid volume specification: '/host_mnt/c/Users/<user_name>/tls: /root/tls/:ro': 
+   invalid mount config for type "bind": invalid mount path: ' /root/tls/:ro' mount path must be absolute.
    ```
    Ensure there are no extra spaces when setting the `-v` flag. See more details regarding the `-v` flag in Docker's [documentation](https://docs.docker.com/storage/volumes/#choose-the--v-or---mount-flag).
    
    Invalid example: 
    ```
-   -v "%USERPROFILE%/.aws/credentials: /root/.aws/credentials:ro
+   -v "%USERPROFILE%/tls: /root/tls/:ro"
    ```
    Valid example: 
    ```
-   -v "%USERPROFILE%/.aws/credentials:/root/.aws/credentials:ro
+   -v "%USERPROFILE%/tls:/root/tls/:ro"
    ```
-   
-## Limitation
-
-There is currently no authentication or encryption between Prometheus and the Prometheus Connector. Once the Prometheus Connector has been initialized, anyone can send a request to the endpoint. Ensure the Prometheus and the Prometheus Connector are running in the same trust zone.
 
 ## License
 

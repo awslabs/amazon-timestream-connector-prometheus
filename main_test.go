@@ -15,9 +15,11 @@ package main
 
 import (
 	"encoding/base64"
+	goErrors "errors"
 	"fmt"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/private/protocol"
 	"github.com/aws/aws-sdk-go/service/timestreamquery"
 	"github.com/aws/aws-sdk-go/service/timestreamwrite"
@@ -52,7 +54,10 @@ const (
 	databaseLabel         = "bar"
 	assertInputMessage    = "Errors must not occur while marshalling input data."
 	assertResponseMessage = "Error must not occur while reading the response body from the test output."
+	encodedBasicAuth      = "Basic QWxhZGRpbjpPcGVuU2VzYW1l"
 	writeRequestType      = "*prompb.WriteRequest"
+	readRequestType       = "*prompb.ReadRequest"
+	awsCredentialsType    = "*credentials.Credentials"
 )
 
 var (
@@ -114,8 +119,8 @@ var (
 	}
 	validWriteRequest = &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{validTimeSeries}}
 	validReadResponse = &prompb.ReadResponse{Results: []*prompb.QueryResult{{Timeseries: []*prompb.TimeSeries{validTimeSeries}}}}
-	validWriteHeader  = map[string]string{"x-prometheus-remote-write-version": "0.1.0"}
-	validReadHeader   = map[string]string{"x-prometheus-remote-read-version": "0.1.0"}
+	validWriteHeader  = map[string]string{"x-prometheus-remote-write-version": "0.1.0", basicAuthHeader: encodedBasicAuth}
+	validReadHeader   = map[string]string{"x-prometheus-remote-read-version": "0.1.0", basicAuthHeader: encodedBasicAuth}
 )
 
 type lambdaEnvOptions struct {
@@ -136,15 +141,15 @@ type mockWriter struct {
 }
 
 type requestTestCase struct {
-	name              string
-	lambdaOptions     []lambdaEnvOptions
-	inputRequest      events.APIGatewayProxyRequest
-	mockSDKError      error
-	mockCreationError error
+	name               string
+	lambdaOptions      []lambdaEnvOptions
+	inputRequest       events.APIGatewayProxyRequest
+	mockSDKError       error
+	expectedStatusCode int
 }
 
-func (m *mockWriter) Write(req *prompb.WriteRequest) error {
-	args := m.Called(req)
+func (m *mockWriter) Write(req *prompb.WriteRequest, credentials *credentials.Credentials) error {
+	args := m.Called(req, credentials)
 	return args.Error(0)
 }
 
@@ -153,8 +158,8 @@ type mockReader struct {
 	reader
 }
 
-func (m *mockReader) Read(req *prompb.ReadRequest) (*prompb.ReadResponse, error) {
-	args := m.Called(req)
+func (m *mockReader) Read(req *prompb.ReadRequest, credentials *credentials.Credentials) (*prompb.ReadResponse, error) {
+	args := m.Called(req, credentials)
 	return args.Get(0).(*prompb.ReadResponse), args.Error(1)
 }
 
@@ -248,10 +253,50 @@ func TestMainParseFlags(t *testing.T) {
 	})
 }
 
+func TestParseBasicAuth(t *testing.T) {
+	tests := []struct {
+		name                string
+		encodedCreds        string
+		expectedCredentials *credentials.Credentials
+		expectedAuthOk      bool
+	}{
+		{
+			name:                "valid basic auth header",
+			encodedCreds:        encodedBasicAuth,
+			expectedCredentials: credentials.NewStaticCredentials("Aladdin", "OpenSesame", ""),
+			expectedAuthOk:      true,
+		},
+		{
+			name:                "empty basic auth header",
+			encodedCreds:        "",
+			expectedCredentials: nil,
+			expectedAuthOk:      false,
+		},
+		{
+			name:                "invalid basic auth header",
+			encodedCreds:        "invalid",
+			expectedCredentials: nil,
+			expectedAuthOk:      false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			awsCredentials, authOk := parseBasicAuth(test.encodedCreds)
+			assert.Equal(t, test.expectedAuthOk, authOk)
+			assert.Equal(t, test.expectedCredentials, awsCredentials)
+		})
+	}
+
+}
+
 func TestLambdaHandlerPrepareRequest(t *testing.T) {
 	validWriteRequestBody, _ := prepareData(t)
 	invalidSnappyEncodeRequestBody := make([]byte, base64.StdEncoding.EncodedLen(len([]byte("foo"))))
 	base64.StdEncoding.Encode(invalidSnappyEncodeRequestBody, []byte("foo"))
+	validBasicAuthHeader := make(map[string]string)
+	validBasicAuthHeader[basicAuthHeader] = encodedBasicAuth
+	invalidBasicAuthHeader := make(map[string]string)
+	invalidBasicAuthHeader[basicAuthHeader] = "Basic "
 
 	tests := []struct {
 		name             string
@@ -262,7 +307,11 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 		{
 			name:          "error no database and no table",
 			lambdaOptions: []lambdaEnvOptions{},
-			inputRequest:  events.APIGatewayProxyRequest{},
+			inputRequest: events.APIGatewayProxyRequest{
+				IsBase64Encoded: true,
+				Body:            string(validWriteRequestBody),
+				Headers:         validBasicAuthHeader,
+			},
 			expectedResponse: events.APIGatewayProxyResponse{
 				StatusCode: http.StatusBadRequest,
 				Body:       errors.NewMissingDestinationError().(*errors.MissingDestinationError).Message()},
@@ -273,7 +322,11 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest: events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: "foo"},
+			inputRequest: events.APIGatewayProxyRequest{
+				IsBase64Encoded: true,
+				Body:            "foo",
+				Headers:         validBasicAuthHeader,
+			},
 			expectedResponse: events.APIGatewayProxyResponse{
 				StatusCode: http.StatusBadRequest,
 			},
@@ -284,21 +337,58 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest: events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(invalidSnappyEncodeRequestBody)},
+			inputRequest: events.APIGatewayProxyRequest{
+				IsBase64Encoded: true,
+				Body:            string(invalidSnappyEncodeRequestBody),
+				Headers:         validBasicAuthHeader,
+			},
 			expectedResponse: events.APIGatewayProxyResponse{
 				StatusCode: http.StatusBadRequest,
 			},
 		},
 		{
-			name: "error no request header",
+			name: "error no Prometheus remote request version header",
 			lambdaOptions: []lambdaEnvOptions{
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest: events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody)},
+			inputRequest: events.APIGatewayProxyRequest{
+				IsBase64Encoded: true,
+				Body:            string(validWriteRequestBody),
+				Headers:         validBasicAuthHeader,
+			},
 			expectedResponse: events.APIGatewayProxyResponse{
 				StatusCode: http.StatusBadRequest,
 				Body:       errors.NewMissingHeaderError(readHeader, writeHeader).(*errors.MissingHeaderError).Message()},
+		},
+		{
+			name: "error no basic auth header",
+			lambdaOptions: []lambdaEnvOptions{
+				{key: tableLabelConfig.envFlag, value: tableLabel},
+				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+			},
+			inputRequest: events.APIGatewayProxyRequest{
+				IsBase64Encoded: true,
+				Body:            string(validWriteRequestBody),
+			},
+			expectedResponse: events.APIGatewayProxyResponse{
+				StatusCode: http.StatusBadRequest,
+				Body:       errors.NewParseBasicAuthHeaderError().(*errors.ParseBasicAuthHeaderError).Message()},
+		},
+		{
+			name: "error invalid basic auth header",
+			lambdaOptions: []lambdaEnvOptions{
+				{key: tableLabelConfig.envFlag, value: tableLabel},
+				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+			},
+			inputRequest: events.APIGatewayProxyRequest{
+				IsBase64Encoded: true,
+				Body:            string(validWriteRequestBody),
+				Headers:         invalidBasicAuthHeader,
+			},
+			expectedResponse: events.APIGatewayProxyResponse{
+				StatusCode: http.StatusBadRequest,
+				Body:       errors.NewParseBasicAuthHeaderError().(*errors.ParseBasicAuthHeaderError).Message()},
 		},
 		{
 			name: "error parse environment variables",
@@ -307,7 +397,11 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 				{key: enableLogConfig.envFlag, value: "invalid"},
 			},
-			inputRequest:     events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody)},
+			inputRequest: events.APIGatewayProxyRequest{
+				IsBase64Encoded: true,
+				Body:            string(validWriteRequestBody),
+				Headers:         validBasicAuthHeader,
+			},
 			expectedResponse: events.APIGatewayProxyResponse{StatusCode: http.StatusBadRequest},
 		},
 	}
@@ -345,9 +439,9 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
-			mockSDKError:      nil,
-			mockCreationError: nil,
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
+			mockSDKError:       nil,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name: "error unmarshalling write request",
@@ -355,9 +449,9 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(invalidWriteRequest), Headers: validWriteHeader},
-			mockSDKError:      nil,
-			mockCreationError: nil,
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(invalidWriteRequest), Headers: validWriteHeader},
+			mockSDKError:       nil,
+			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "error during write",
@@ -365,9 +459,9 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
-			mockSDKError:      fmt.Errorf("foo"),
-			mockCreationError: nil,
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
+			mockSDKError:       fmt.Errorf("foo"),
+			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "SDK error during write",
@@ -375,19 +469,9 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
-			mockSDKError:      &timestreamwrite.RejectedRecordsException{},
-			mockCreationError: nil,
-		},
-		{
-			name: "error creating write client",
-			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
-			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
-			mockSDKError:      nil,
-			mockCreationError: fmt.Errorf("foo"),
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
+			mockSDKError:       &timestreamwrite.RejectedRecordsException{},
+			expectedStatusCode: (&timestreamwrite.RejectedRecordsException{}).StatusCode(),
 		},
 		{
 			name: "Missing database name from write",
@@ -395,9 +479,9 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
-			mockSDKError:      errors.NewMissingDatabaseWithWriteError(databaseLabel, emptyTimeSeries),
-			mockCreationError: nil,
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
+			mockSDKError:       errors.NewMissingDatabaseWithWriteError(databaseLabel, emptyTimeSeries),
+			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "Missing table name from write",
@@ -405,9 +489,9 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
-			mockSDKError:      errors.NewMissingTableWithWriteError(tableLabel, emptyTimeSeries),
-			mockCreationError: nil,
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
+			mockSDKError:       errors.NewMissingTableWithWriteError(tableLabel, emptyTimeSeries),
+			expectedStatusCode: http.StatusBadRequest,
 		},
 	}
 
@@ -416,11 +500,8 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 			mockTimestreamWriter := new(mockWriter)
 			mockTimestreamWriter.On(
 				"Write",
-				mock.AnythingOfType(writeRequestType)).Return(test.mockSDKError)
-
-			createWriteClient = func(timestreamClient *timestream.Client, logger log.Logger, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) error {
-				return test.mockCreationError
-			}
+				mock.AnythingOfType(writeRequestType),
+				mock.AnythingOfType(awsCredentialsType)).Return(test.mockSDKError)
 
 			getWriteClient = func(timestreamClient *timestream.Client) writer {
 				return mockTimestreamWriter
@@ -428,15 +509,15 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 
 			setEnvironmentVariables(test.lambdaOptions)
 
-			_, err := lambdaHandler(test.inputRequest)
-			assert.Nil(t, err)
+			res, _ := lambdaHandler(test.inputRequest)
+			assert.Equal(t, test.expectedStatusCode, res.StatusCode)
 
 			unsetEnvironmentVariables(test.lambdaOptions)
 		})
 	}
 }
 
-func TestHandlerReadRequest(t *testing.T) {
+func TestLambdaHandlerReadRequest(t *testing.T) {
 	_, validReadRequestBody := prepareData(t)
 
 	data, err := proto.Marshal(validTimeSeries)
@@ -451,8 +532,9 @@ func TestHandlerReadRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest: events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(invalidReadRequest), Headers: validReadHeader},
-			mockSDKError: nil,
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(invalidReadRequest), Headers: validReadHeader},
+			mockSDKError:       nil,
+			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "success read request",
@@ -460,18 +542,9 @@ func TestHandlerReadRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest: events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
-			mockSDKError: nil,
-		},
-		{
-			name: "error creating read client",
-			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
-			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
-			mockSDKError:      nil,
-			mockCreationError: fmt.Errorf("foo"),
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
+			mockSDKError:       nil,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name: "error during read",
@@ -479,9 +552,9 @@ func TestHandlerReadRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
-			mockSDKError:      fmt.Errorf("foo"),
-			mockCreationError: nil,
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
+			mockSDKError:       fmt.Errorf("foo"),
+			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "SDK error during read",
@@ -489,9 +562,9 @@ func TestHandlerReadRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
-			mockSDKError:      &timestreamquery.ValidationException{},
-			mockCreationError: nil,
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
+			mockSDKError:       &timestreamquery.ValidationException{},
+			expectedStatusCode: (&timestreamquery.ValidationException{}).StatusCode(),
 		},
 		{
 			name: "Missing database name from read",
@@ -499,9 +572,9 @@ func TestHandlerReadRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
-			mockSDKError:      errors.NewMissingDatabaseWithQueryError(databaseLabel),
-			mockCreationError: nil,
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
+			mockSDKError:       errors.NewMissingDatabaseWithQueryError(databaseLabel),
+			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "Missing table name from read",
@@ -509,9 +582,9 @@ func TestHandlerReadRequest(t *testing.T) {
 				{key: tableLabelConfig.envFlag, value: tableLabel},
 				{key: databaseLabelConfig.envFlag, value: databaseLabel},
 			},
-			inputRequest:      events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
-			mockSDKError:      errors.NewMissingTableWithQueryError(tableLabel),
-			mockCreationError: nil,
+			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
+			mockSDKError:       errors.NewMissingTableWithQueryError(tableLabel),
+			expectedStatusCode: http.StatusBadRequest,
 		},
 	}
 
@@ -520,18 +593,15 @@ func TestHandlerReadRequest(t *testing.T) {
 			mockTimestreamReader := new(mockReader)
 			mockTimestreamReader.On(
 				"Read",
-				mock.AnythingOfType("*prompb.ReadRequest")).Return(&prompb.ReadResponse{}, test.mockSDKError)
+				mock.AnythingOfType(readRequestType),
+				mock.AnythingOfType(awsCredentialsType)).Return(&prompb.ReadResponse{}, test.mockSDKError)
 
-			// Mock the instantiation and retrieval of a real query client.
-			createQueryClient = func(timestreamClient *timestream.Client, logger log.Logger, configs *aws.Config, maxRetries int) error {
-				return test.mockCreationError
-			}
 			getQueryClient = func(timestreamClient *timestream.Client) reader { return mockTimestreamReader }
 
 			setEnvironmentVariables(test.lambdaOptions)
 
-			_, err := lambdaHandler(test.inputRequest)
-			assert.Nil(t, err)
+			res, _ := lambdaHandler(test.inputRequest)
+			assert.Equal(t, test.expectedStatusCode, res.StatusCode)
 
 			unsetEnvironmentVariables(test.lambdaOptions)
 		})
@@ -644,6 +714,8 @@ func TestWriteHandler(t *testing.T) {
 		request               proto.Message
 		returnError           error
 		getWriteRequestReader func(t *testing.T, message proto.Message) io.Reader
+		basicAuthHeader       string
+		encodedBasicAuth      string
 		expectedStatusCode    int
 	}{
 		{
@@ -651,7 +723,27 @@ func TestWriteHandler(t *testing.T) {
 			request:               validWriteRequest,
 			returnError:           nil,
 			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      encodedBasicAuth,
 			expectedStatusCode:    http.StatusOK,
+		},
+		{
+			name:                  "error decoding basic auth header",
+			request:               validWriteRequest,
+			returnError:           nil,
+			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      "",
+			expectedStatusCode:    http.StatusBadRequest,
+		},
+		{
+			name:                  "error no basic auth header",
+			request:               validWriteRequest,
+			returnError:           nil,
+			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       "",
+			encodedBasicAuth:      "",
+			expectedStatusCode:    http.StatusBadRequest,
 		},
 		{
 			name:        "error reading request body",
@@ -660,6 +752,8 @@ func TestWriteHandler(t *testing.T) {
 			getWriteRequestReader: func(t *testing.T, _ proto.Message) io.Reader {
 				return errReader(0)
 			},
+			basicAuthHeader:    basicAuthHeader,
+			encodedBasicAuth:   encodedBasicAuth,
 			expectedStatusCode: http.StatusInternalServerError,
 		},
 		{
@@ -669,6 +763,8 @@ func TestWriteHandler(t *testing.T) {
 			getWriteRequestReader: func(t *testing.T, _ proto.Message) io.Reader {
 				return strings.NewReader("foo")
 			},
+			basicAuthHeader:    basicAuthHeader,
+			encodedBasicAuth:   encodedBasicAuth,
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
@@ -676,6 +772,8 @@ func TestWriteHandler(t *testing.T) {
 			request:               validTimeSeries,
 			returnError:           nil,
 			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      encodedBasicAuth,
 			expectedStatusCode:    http.StatusBadRequest,
 		},
 		{
@@ -685,13 +783,26 @@ func TestWriteHandler(t *testing.T) {
 				RespMetadata: protocol.ResponseMetadata{StatusCode: 419},
 			},
 			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      encodedBasicAuth,
 			expectedStatusCode:    419,
+		},
+		{
+			name:                  "unknown SDK error from write",
+			request:               validWriteRequest,
+			returnError:           errors.NewSDKNonRequestError(goErrors.New("")),
+			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      encodedBasicAuth,
+			expectedStatusCode:    http.StatusBadRequest,
 		},
 		{
 			name:                  "Missing database name from write",
 			request:               validWriteRequest,
 			returnError:           errors.NewMissingDatabaseWithWriteError(databaseLabel, emptyTimeSeries),
 			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      encodedBasicAuth,
 			expectedStatusCode:    http.StatusBadRequest,
 		},
 		{
@@ -699,6 +810,8 @@ func TestWriteHandler(t *testing.T) {
 			request:               validWriteRequest,
 			returnError:           errors.NewMissingTableWithWriteError(tableLabel, emptyTimeSeries),
 			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      encodedBasicAuth,
 			expectedStatusCode:    http.StatusBadRequest,
 		},
 	}
@@ -708,10 +821,12 @@ func TestWriteHandler(t *testing.T) {
 			mockTimestreamWriter := new(mockWriter)
 			mockTimestreamWriter.On(
 				"Write",
-				mock.AnythingOfType(writeRequestType)).Return(test.returnError)
+				mock.AnythingOfType(writeRequestType),
+				mock.AnythingOfType(awsCredentialsType)).Return(test.returnError)
 
 			request, err := http.NewRequest("POST", "/write", test.getWriteRequestReader(t, test.request))
 			assert.Nil(t, err)
+			request.Header.Set(test.basicAuthHeader, test.encodedBasicAuth)
 
 			logger := log.NewNopLogger()
 			writers := []writer{mockTimestreamWriter}
@@ -743,13 +858,15 @@ func TestWriteHandler(t *testing.T) {
 		mockTimestreamWriter := new(mockWriter)
 		mockTimestreamWriter.On(
 			"Write",
-			mock.AnythingOfType(writeRequestType)).Return(errors.NewLongLabelNameError("", 0))
+			mock.AnythingOfType(writeRequestType),
+			mock.AnythingOfType(awsCredentialsType)).Return(errors.NewLongLabelNameError("", 0))
 		getWriteRequestClient := func(t *testing.T) io.Reader {
 			writeData, err := proto.Marshal(validWriteRequest)
 			assert.Nil(t, err, assertInputMessage)
 			return strings.NewReader(string(snappy.Encode(nil, writeData)))
 		}
 		request, err := http.NewRequest("POST", "/write", getWriteRequestClient(t))
+		request.Header.Set(basicAuthHeader, encodedBasicAuth)
 		assert.Nil(t, err)
 		logger := log.NewNopLogger()
 		writers := []writer{mockTimestreamWriter}
@@ -768,6 +885,8 @@ func TestReadHandler(t *testing.T) {
 		returnError          error
 		returnResponse       *prompb.ReadResponse
 		getReadRequestReader func(t *testing.T, message proto.Message) io.Reader
+		basicAuthHeader      string
+		encodedBasicAuth     string
 		expectedStatusCode   int
 	}{
 		{
@@ -776,7 +895,19 @@ func TestReadHandler(t *testing.T) {
 			returnError:          nil,
 			returnResponse:       validReadResponse,
 			getReadRequestReader: getReaderHelper,
+			basicAuthHeader:      basicAuthHeader,
+			encodedBasicAuth:     encodedBasicAuth,
 			expectedStatusCode:   http.StatusOK,
+		},
+		{
+			name:                 "error decoding basic auth header",
+			request:              validReadRequest,
+			returnError:          nil,
+			returnResponse:       validReadResponse,
+			getReadRequestReader: getReaderHelper,
+			basicAuthHeader:      basicAuthHeader,
+			encodedBasicAuth:     "",
+			expectedStatusCode:   http.StatusBadRequest,
 		},
 		{
 			name:           "error reading request body",
@@ -786,6 +917,8 @@ func TestReadHandler(t *testing.T) {
 			getReadRequestReader: func(t *testing.T, _ proto.Message) io.Reader {
 				return errReader(0)
 			},
+			basicAuthHeader:    basicAuthHeader,
+			encodedBasicAuth:   encodedBasicAuth,
 			expectedStatusCode: http.StatusInternalServerError,
 		},
 		{
@@ -796,6 +929,8 @@ func TestReadHandler(t *testing.T) {
 			getReadRequestReader: func(t *testing.T, _ proto.Message) io.Reader {
 				return strings.NewReader("foo")
 			},
+			basicAuthHeader:    basicAuthHeader,
+			encodedBasicAuth:   encodedBasicAuth,
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
@@ -804,6 +939,8 @@ func TestReadHandler(t *testing.T) {
 			returnError:          nil,
 			returnResponse:       nil,
 			getReadRequestReader: getReaderHelper,
+			basicAuthHeader:      basicAuthHeader,
+			encodedBasicAuth:     encodedBasicAuth,
 			expectedStatusCode:   http.StatusBadRequest,
 		},
 		{
@@ -814,6 +951,8 @@ func TestReadHandler(t *testing.T) {
 			},
 			returnResponse:       nil,
 			getReadRequestReader: getReaderHelper,
+			basicAuthHeader:      basicAuthHeader,
+			encodedBasicAuth:     encodedBasicAuth,
 			expectedStatusCode:   http.StatusConflict,
 		},
 		{
@@ -822,6 +961,8 @@ func TestReadHandler(t *testing.T) {
 			returnError:          fmt.Errorf("foo"),
 			returnResponse:       nil,
 			getReadRequestReader: getReaderHelper,
+			basicAuthHeader:      basicAuthHeader,
+			encodedBasicAuth:     encodedBasicAuth,
 			expectedStatusCode:   http.StatusBadRequest,
 		},
 		{
@@ -830,6 +971,8 @@ func TestReadHandler(t *testing.T) {
 			returnError:          errors.NewMissingDatabaseWithQueryError(databaseLabel),
 			returnResponse:       nil,
 			getReadRequestReader: getReaderHelper,
+			basicAuthHeader:      basicAuthHeader,
+			encodedBasicAuth:     encodedBasicAuth,
 			expectedStatusCode:   http.StatusBadRequest,
 		},
 		{
@@ -838,6 +981,8 @@ func TestReadHandler(t *testing.T) {
 			returnError:          errors.NewMissingTableWithQueryError(tableLabel),
 			returnResponse:       nil,
 			getReadRequestReader: getReaderHelper,
+			basicAuthHeader:      basicAuthHeader,
+			encodedBasicAuth:     encodedBasicAuth,
 			expectedStatusCode:   http.StatusBadRequest,
 		},
 	}
@@ -847,10 +992,12 @@ func TestReadHandler(t *testing.T) {
 			mockTimestreamReader := new(mockReader)
 			mockTimestreamReader.On(
 				"Read",
-				mock.AnythingOfType("*prompb.ReadRequest")).Return(test.returnResponse, test.returnError)
+				mock.AnythingOfType(readRequestType),
+				mock.AnythingOfType(awsCredentialsType)).Return(test.returnResponse, test.returnError)
 
 			request, err := http.NewRequest("POST", "/read", test.getReadRequestReader(t, test.request))
 			assert.Nil(t, err)
+			request.Header.Set(test.basicAuthHeader, test.encodedBasicAuth)
 
 			logger := log.NewNopLogger()
 			readers := []reader{mockTimestreamReader}

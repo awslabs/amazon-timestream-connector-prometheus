@@ -11,11 +11,15 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the speci
 and limitations under the License.
 */
 
+// These integration tests create real Amazon Timestream read and write clients and send Prometheus remote read and
+// write requests directly to the clients. These tests do not create a real Prometheus server nor create a local
+// Prometheus Connector server.
 package integration
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
 	awsClient "github.com/aws/aws-sdk-go/aws/client"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/timestreamwrite"
 	"github.com/go-kit/kit/log"
@@ -31,20 +35,22 @@ import (
 )
 
 var (
-	logger       = log.NewNopLogger()
-	nowUnix      = time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
-	endUnix      = nowUnix + 30000
-	destinations = map[string][]string{database: {table}, database2: {table2}}
+	logger             = log.NewNopLogger()
+	nowUnix            = time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+	endUnix            = nowUnix + 30000
+	destinations       = map[string][]string{database: {table}, database2: {table2}}
+	writeClient        = timestreamwrite.New(session.Must(session.NewSession()), aws.NewConfig().WithRegion(region))
+	awsCredentials     = writeClient.Config.Credentials
+	emptyCredentials   = credentials.NewStaticCredentials("", "", "")
+	invalidCredentials = credentials.NewStaticCredentials("accessKey", "secretKey", "")
 )
 
 func TestMain(m *testing.M) {
-	testSession := session.Must(session.NewSession())
-	writeClient := timestreamwrite.New(testSession, aws.NewConfig().WithRegion(region))
-	if err := setup(writeClient); err != nil {
+	if err := Setup(writeClient, destinations); err != nil {
 		panic(err)
 	}
 	code := m.Run()
-	if err := shutdown(writeClient); err != nil {
+	if err := Shutdown(writeClient, destinations); err != nil {
 		panic(err)
 	}
 	os.Exit(code)
@@ -84,86 +90,42 @@ func TestWriteClient(t *testing.T) {
 	clientDisableFailOnLongLabelName := createClient(t, logger, databaseLabel, tableLabel, awsConfigs, false, false)
 
 	type testCase []struct {
-		testName string
-		request  *prompb.WriteRequest
+		testName    string
+		request     *prompb.WriteRequest
+		credentials *credentials.Credentials
 	}
 
 	successTestCase := testCase{
-		{"write normal request", req},
-		{"write request with long metric name", reqLongMetric},
-		{"write request with long label value", reqLongLabel},
-		{"write request with multi-destination and 100 samples per destination per request", reqBatch},
+		{"write normal request", req, awsCredentials},
+		{"write request with long metric name", reqLongMetric, awsCredentials},
+		{"write request with long label value", reqLongLabel, awsCredentials},
+		{"write request with multi-destination and 100 samples per destination per request", reqBatch, awsCredentials},
 	}
 	for _, test := range successTestCase {
 		t.Run(test.testName, func(t *testing.T) {
-			err := clientDisableFailOnLongLabelName.WriteClient().Write(test.request)
+			err := clientDisableFailOnLongLabelName.WriteClient().Write(test.request, test.credentials)
 			assert.Nil(t, err)
 		})
 	}
 
 	invalidTestCase := testCase{
-		{"write request with failing long metric name", reqLongMetric},
-		{"write request with failing long label value", reqLongLabel},
-		{"write request with multi-destination and more than 100 samples per destination", reqBatchFail},
+		{"write request with failing long metric name", reqLongMetric, awsCredentials},
+		{"write request with failing long label value", reqLongLabel, awsCredentials},
+		{"write request with multi-destination and more than 100 samples per destination", reqBatchFail, awsCredentials},
+		{"write request with no AWS credentials", reqBatchFail, emptyCredentials},
+		{"write request with invalid AWS credentials", reqBatchFail, invalidCredentials},
 	}
 	for _, test := range invalidTestCase {
 		t.Run(test.testName, func(t *testing.T) {
-			err := clientEnableFailOnLongLabelName.WriteClient().Write(test.request)
+			err := clientEnableFailOnLongLabelName.WriteClient().Write(test.request, test.credentials)
 			assert.NotNil(t, err)
 		})
 	}
 }
 
 func TestQueryClient(t *testing.T) {
-	writeReq := &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{
-		{
-			Labels: []*prompb.Label{
-				{
-					Name:  model.MetricNameLabel,
-					Value: queryMetricName,
-				},
-				{
-					Name:  databaseLabel,
-					Value: database,
-				},
-				{
-					Name:  tableLabel,
-					Value: table,
-				},
-				{
-					Name:  model.JobLabel,
-					Value: jobName,
-				},
-			},
-
-			Samples: []prompb.Sample{
-				{
-					Timestamp: nowUnix,
-					Value:     value,
-				},
-			},
-		},
-	}}
-
-	request := &prompb.ReadRequest{
-		Queries: []*prompb.Query{
-			{
-				StartTimestampMs: nowUnix,
-				EndTimestampMs:   endUnix,
-				Matchers: []*prompb.LabelMatcher{
-					createLabelMatcher(prompb.LabelMatcher_EQ, model.MetricNameLabel, queryMetricName),
-					createLabelMatcher(prompb.LabelMatcher_EQ, databaseLabel, database),
-					createLabelMatcher(prompb.LabelMatcher_EQ, tableLabel, table),
-				},
-				Hints: &prompb.ReadHints{
-					StepMs:  0,
-					Func:    "",
-					StartMs: nowUnix,
-					EndMs:   endUnix,
-				},
-			},
-		},
-	}
+	writeReq := createWriteRequest()
+	request, expectedResponse := createValidReadRequest()
 
 	requestWithInvalidRegex := &prompb.ReadRequest{
 		Queries: []*prompb.Query{
@@ -196,91 +158,37 @@ func TestQueryClient(t *testing.T) {
 		},
 	}
 
-	expectedResponse := &prompb.ReadResponse{
-		Results: []*prompb.QueryResult{
-			{
-				Timeseries: []*prompb.TimeSeries{
-					{
-						Labels: []*prompb.Label{
-							{
-								Name:  model.JobLabel,
-								Value: jobName,
-							},
-							{
-								Name:  model.MetricNameLabel,
-								Value: queryMetricName,
-							},
-						},
-						Samples: []prompb.Sample{
-							{
-								Value:     value,
-								Timestamp: nowUnix,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
 	awsConfigs := &aws.Config{Region: aws.String(region)}
 	clientDisableFailOnLongLabelName := createClient(t, logger, databaseLabel, tableLabel, awsConfigs, false, false)
 
-	err := clientDisableFailOnLongLabelName.WriteClient().Write(writeReq)
+	err := clientDisableFailOnLongLabelName.WriteClient().Write(writeReq, awsCredentials)
 	assert.Nil(t, err)
 
 	invalidTestCase := []struct {
-		testName       string
-		invalidRequest *prompb.ReadRequest
+		testName    string
+		request     *prompb.ReadRequest
+		credentials *credentials.Credentials
 	}{
-		{"read with invalid regex", requestWithInvalidRegex},
-		{"read with invalid matcher", requestWithInvalidMatcher},
+		{"read with invalid regex", requestWithInvalidRegex, awsCredentials},
+		{"read with invalid matcher", requestWithInvalidMatcher, awsCredentials},
+		{"read with no AWS credentials", request, emptyCredentials},
+		{"read with invalid AWS credentials", request, invalidCredentials},
 	}
 
 	for _, test := range invalidTestCase {
 		t.Run(test.testName, func(t *testing.T) {
-			response, err := clientDisableFailOnLongLabelName.QueryClient().Read(test.invalidRequest)
+			response, err := clientDisableFailOnLongLabelName.QueryClient().Read(test.request, test.credentials)
 			assert.NotNil(t, err)
 			assert.Nil(t, response)
 		})
 	}
 
 	t.Run("read normal request", func(t *testing.T) {
-		response, err := clientDisableFailOnLongLabelName.QueryClient().Read(request)
+		response, err := clientDisableFailOnLongLabelName.QueryClient().Read(request, awsCredentials)
 		assert.Nil(t, err)
 		assert.NotNil(t, response)
 		assert.True(t, cmp.Equal(expectedResponse, response), "Actual response does not match expected response.")
 	})
-}
-
-// setup before all tests.
-func setup(writeClient *timestreamwrite.TimestreamWrite) error {
-	for database, tables := range destinations {
-		if _, err := writeClient.CreateDatabase(&timestreamwrite.CreateDatabaseInput{DatabaseName: aws.String(database)}); err != nil {
-			return err
-		}
-		for _, table := range tables {
-			if _, err := writeClient.CreateTable(&timestreamwrite.CreateTableInput{DatabaseName: aws.String(database), TableName: aws.String(table)}); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// shutdown after all tests.
-func shutdown(writeClient *timestreamwrite.TimestreamWrite) error {
-	for database, tables := range destinations {
-		for _, table := range tables {
-			if _, err := writeClient.DeleteTable(&timestreamwrite.DeleteTableInput{DatabaseName: aws.String(database), TableName: aws.String(table)}); err != nil {
-				return err
-			}
-		}
-		if _, err := writeClient.DeleteDatabase(&timestreamwrite.DeleteDatabaseInput{DatabaseName: aws.String(database)}); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // randomTimestamp generates a random timestamp within the memory store retention in Timestream
@@ -348,9 +256,94 @@ func createReadHints() *prompb.ReadHints {
 // createClient creates a new Timestream client containing a Timestream query client and a Timestream write client.
 func createClient(t *testing.T, logger log.Logger, database, table string, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) *timestream.Client {
 	client := timestream.NewBaseClient(database, table)
-	assert.Nil(t, client.NewQueryClient(logger, configs))
+	client.NewQueryClient(logger, configs)
 
 	configs.MaxRetries = aws.Int(awsClient.DefaultRetryerMaxNumRetries)
-	assert.Nil(t, client.NewWriteClient(logger, configs, failOnLongMetricLabelName, failOnInvalidSample))
+	client.NewWriteClient(logger, configs, failOnLongMetricLabelName, failOnInvalidSample)
 	return client
+}
+
+// createWriteRequest creates a write request for query test.
+func createWriteRequest() *prompb.WriteRequest {
+	return &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{
+		{
+			Labels: []*prompb.Label{
+				{
+					Name:  model.MetricNameLabel,
+					Value: queryMetricName,
+				},
+				{
+					Name:  databaseLabel,
+					Value: database,
+				},
+				{
+					Name:  tableLabel,
+					Value: table,
+				},
+				{
+					Name:  model.JobLabel,
+					Value: jobName,
+				},
+			},
+
+			Samples: []prompb.Sample{
+				{
+					Timestamp: nowUnix,
+					Value:     value,
+				},
+			},
+		},
+	}}
+}
+
+// createValidReadRequest creates a read request and expected read response for positive query test.
+func createValidReadRequest() (*prompb.ReadRequest, *prompb.ReadResponse) {
+	readReq := &prompb.ReadRequest{
+		Queries: []*prompb.Query{
+			{
+				StartTimestampMs: nowUnix,
+				EndTimestampMs:   endUnix,
+				Matchers: []*prompb.LabelMatcher{
+					createLabelMatcher(prompb.LabelMatcher_EQ, model.MetricNameLabel, queryMetricName),
+					createLabelMatcher(prompb.LabelMatcher_EQ, databaseLabel, database),
+					createLabelMatcher(prompb.LabelMatcher_EQ, tableLabel, table),
+				},
+				Hints: &prompb.ReadHints{
+					StepMs:  0,
+					Func:    "",
+					StartMs: nowUnix,
+					EndMs:   endUnix,
+				},
+			},
+		},
+	}
+
+	expectedResponse := &prompb.ReadResponse{
+		Results: []*prompb.QueryResult{
+			{
+				Timeseries: []*prompb.TimeSeries{
+					{
+						Labels: []*prompb.Label{
+							{
+								Name:  model.JobLabel,
+								Value: jobName,
+							},
+							{
+								Name:  model.MetricNameLabel,
+								Value: queryMetricName,
+							},
+						},
+						Samples: []prompb.Sample{
+							{
+								Value:     value,
+								Timestamp: nowUnix,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return readReq, expectedResponse
 }

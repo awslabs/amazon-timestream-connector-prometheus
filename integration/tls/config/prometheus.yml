@@ -1,0 +1,44 @@
+global:
+  scrape_interval: 60s
+  evaluation_interval: 60s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    scrape_interval: 15s
+
+    static_configs:
+      - targets: ['localhost:9090']
+
+remote_write:
+  - url: "https://host.docker.internal:9201/write"
+
+    tls_config:
+      ca_file: "/etc/prometheus/RootCA.pem"
+
+    basic_auth:
+      # Update the user name and password with valid IAM credentials.
+      username: accessKey
+      password: secretAccessKey
+
+    write_relabel_configs:
+      - source_labels: [ "__name__" ]
+        regex: .*
+        replacement: tls
+        target_label: timestreamTable
+      - source_labels: [ "__name__" ]
+        regex: .*
+        replacement: tlsDB
+        target_label: timestreamDatabase
+
+remote_read:
+  - url: "https://host.docker.internal:9201/read"
+
+    tls_config:
+      ca_file: "/etc/prometheus/RootCA.pem"
+
+    basic_auth:
+      # Update the user name and password with valid IAM credentials.
+      username: accessKey
+      password: secretAccessKey
+
+    read_recent: true
