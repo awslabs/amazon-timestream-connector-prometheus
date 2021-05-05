@@ -513,14 +513,14 @@ func (qc *QueryClient) buildCommands(queries []*prompb.Query) ([]*timestreamquer
 
 			switch matcher.Type {
 			case prompb.LabelMatcher_EQ:
-				matchers = append(matchers, fmt.Sprintf("%s = '%s'", matcherName, matcher.Value))
+				matchers = append(matchers, fmt.Sprintf("\"%s\" = '%s'", matcherName, matcher.Value))
 			case prompb.LabelMatcher_NEQ:
-				matchers = append(matchers, fmt.Sprintf("%s != '%s'", matcherName, matcher.Value))
+				matchers = append(matchers, fmt.Sprintf("\"%s\" != '%s'", matcherName, matcher.Value))
 			case prompb.LabelMatcher_RE:
-				matchers = append(matchers, fmt.Sprintf("REGEXP_LIKE(%s, '%s')", matcherName, matcher.Value))
+				matchers = append(matchers, fmt.Sprintf("REGEXP_LIKE(\"%s\", '%s')", matcherName, matcher.Value))
 				isRelatedToRegex = true
 			case prompb.LabelMatcher_NRE:
-				matchers = append(matchers, fmt.Sprintf("NOT REGEXP_LIKE(%s, '%s')", matcherName, matcher.Value))
+				matchers = append(matchers, fmt.Sprintf("NOT REGEXP_LIKE(\"%s\", '%s')", matcherName, matcher.Value))
 				isRelatedToRegex = true
 			default:
 				err := errors.NewUnknownMatcherError()
@@ -541,10 +541,10 @@ func (qc *QueryClient) buildCommands(queries []*prompb.Query) ([]*timestreamquer
 			return nil, isRelatedToRegex, err
 		}
 
-		matchers = append(matchers, fmt.Sprintf("%s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)", timeColumnName, query.StartTimestampMs/millisToSecConversionRate, query.EndTimestampMs/millisToSecConversionRate))
+		matchers = append(matchers, fmt.Sprintf("\"%s\" BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)", timeColumnName, query.StartTimestampMs/millisToSecConversionRate, query.EndTimestampMs/millisToSecConversionRate))
 
 		timestreamQueries = append(timestreamQueries, &timestreamquery.QueryInput{
-			QueryString: aws.String(fmt.Sprintf("SELECT * FROM %s.%s WHERE %v", databaseName, tableName, strings.Join(matchers, " AND "))),
+			QueryString: aws.String(fmt.Sprintf("SELECT * FROM \"%s\".\"%s\" WHERE %v", databaseName, tableName, strings.Join(matchers, " AND "))),
 		})
 	}
 
