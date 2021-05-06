@@ -102,7 +102,7 @@ func (m *mockTimestreamQueryClient) QueryPages(input *timestreamquery.QueryInput
 
 func TestClientNewClient(t *testing.T) {
 	client := NewBaseClient(mockDatabaseLabel, mockTableLabel)
-	client.NewWriteClient(mockLogger, &aws.Config{Region: aws.String(mockRegion)}, true, true)
+	client.NewWriteClient(mockLogger, &aws.Config{Region: aws.String(mockRegion)}, true, true, "")
 
 	assert.NotNil(t, client.writeClient)
 	assert.Equal(t, mockLogger, client.writeClient.logger)
@@ -119,7 +119,7 @@ func TestClientNewQueryClient(t *testing.T) {
 		mock.AnythingOfType(functionType)).Return(nil)
 
 	client := NewBaseClient(mockDatabaseLabel, mockTableLabel)
-	client.NewQueryClient(mockLogger, &aws.Config{Region: aws.String(mockRegion)})
+	client.NewQueryClient(mockLogger, &aws.Config{Region: aws.String(mockRegion)}, "")
 
 	assert.NotNil(t, client.queryClient)
 	assert.Equal(t, mockLogger, client.queryClient.logger)
@@ -318,7 +318,7 @@ func TestQueryClientRead(t *testing.T) {
 		mockTimestreamQueryClient := new(mockTimestreamQueryClient)
 		mockTimestreamQueryClient.On("QueryPages", queryInput,
 			mock.AnythingOfType(functionType)).Return(nil)
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
+		initQueryClient = func(config *aws.Config, endpoint string) (timestreamqueryiface.TimestreamQueryAPI, error) {
 			return mockTimestreamQueryClient, nil
 		}
 
@@ -337,7 +337,7 @@ func TestQueryClientRead(t *testing.T) {
 	})
 
 	t.Run("error from buildCommands with missing database name in request", func(t *testing.T) {
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
+		initQueryClient = func(config *aws.Config, endpoint string) (timestreamqueryiface.TimestreamQueryAPI, error) {
 			return new(mockTimestreamQueryClient), nil
 		}
 
@@ -353,7 +353,7 @@ func TestQueryClientRead(t *testing.T) {
 	})
 
 	t.Run("error from buildCommands with missing table name in request", func(t *testing.T) {
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
+		initQueryClient = func(config *aws.Config, endpoint string) (timestreamqueryiface.TimestreamQueryAPI, error) {
 			return new(mockTimestreamQueryClient), nil
 		}
 
@@ -374,7 +374,7 @@ func TestQueryClientRead(t *testing.T) {
 		mockTimestreamQueryClient.On("QueryPages", queryInput,
 			mock.AnythingOfType(functionType)).Return(serverError)
 
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
+		initQueryClient = func(config *aws.Config, endpoint string) (timestreamqueryiface.TimestreamQueryAPI, error) {
 			return mockTimestreamQueryClient, nil
 		}
 
@@ -479,7 +479,7 @@ func TestQueryClientRead(t *testing.T) {
 		mockTimestreamQueryClient.On("QueryPages", queryInputWithInvalidRegex,
 			mock.AnythingOfType(functionType)).Return(validationError)
 
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
+		initQueryClient = func(config *aws.Config, endpoint string) (timestreamqueryiface.TimestreamQueryAPI, error) {
 			return mockTimestreamQueryClient, nil
 		}
 
@@ -511,7 +511,7 @@ func TestWriteClientWrite(t *testing.T) {
 				return reflect.DeepEqual(writeInput, expectedInput)
 			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -544,7 +544,7 @@ func TestWriteClientWrite(t *testing.T) {
 				return reflect.DeepEqual(writeInput, expectedInput)
 			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -585,7 +585,7 @@ func TestWriteClientWrite(t *testing.T) {
 				return reflect.DeepEqual(writeInput, expectedInputPromTable) || reflect.DeepEqual(writeInput, expectedInputAnotherTable)
 			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -619,7 +619,7 @@ func TestWriteClientWrite(t *testing.T) {
 				return reflect.DeepEqual(writeInput, expectedInput)
 			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -653,7 +653,7 @@ func TestWriteClientWrite(t *testing.T) {
 				return reflect.DeepEqual(writeInput, expectedInput)
 			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -685,7 +685,7 @@ func TestWriteClientWrite(t *testing.T) {
 				return reflect.DeepEqual(writeInput, expectedInput)
 			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -717,7 +717,7 @@ func TestWriteClientWrite(t *testing.T) {
 				return reflect.DeepEqual(writeInput, expectedInput)
 			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -744,7 +744,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		mockTimestreamWriteClient.On("WriteRecords", createNewWriteRecordsInputTemplate()).Return(&timestreamwrite.WriteRecordsOutput{}, internalServerError)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -781,7 +781,7 @@ func TestWriteClientWrite(t *testing.T) {
 		mockTimestreamWriteClient.On("WriteRecords", createNewWriteRecordsInputTemplate()).Return(&timestreamwrite.WriteRecordsOutput{}, validationError)
 		mockTimestreamWriteClient.On("WriteRecords", inputDiffDst).Return(&timestreamwrite.WriteRecordsOutput{}, internalServerError)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -819,7 +819,7 @@ func TestWriteClientWrite(t *testing.T) {
 		mockTimestreamWriteClient.On("WriteRecords", createNewWriteRecordsInputTemplate()).Return(&timestreamwrite.WriteRecordsOutput{}, internalServerError)
 		mockTimestreamWriteClient.On("WriteRecords", inputDiffDst).Return(&timestreamwrite.WriteRecordsOutput{}, validationError)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -843,7 +843,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("error from convertToRecords due to missing ingestion database destination", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -879,7 +879,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("error from convertToRecords due to missing ingestion table destination", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -927,7 +927,7 @@ func TestWriteClientWrite(t *testing.T) {
 				return reflect.DeepEqual(writeInput, expectedInput)
 			})).Return(&timestreamwrite.WriteRecordsOutput{}, requestError)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -955,7 +955,7 @@ func TestWriteClientWrite(t *testing.T) {
 				return reflect.DeepEqual(writeInput, expectedInput)
 			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -977,7 +977,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("NaN timeSeries with fail-fast enabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -1000,7 +1000,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("NaN timeSeries with fail-fast disabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -1023,7 +1023,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("Inf timeSeries with fail-fast enabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -1050,7 +1050,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("Inf timeSeries with fail-fast disabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -1077,7 +1077,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("long metric name with fail-fast enabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -1100,7 +1100,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("long metric name with fail-fast disabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -1123,7 +1123,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("long dimension name with fail-fast enabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -1146,7 +1146,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("long dimension name with fail-fast disabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -1171,7 +1171,7 @@ func TestWriteClientWrite(t *testing.T) {
 		unknownSDKErr := errors.NewSDKNonRequestError(goErrors.New(""))
 		mockTimestreamWriteClient.On("WriteRecords", createNewWriteRecordsInputTemplate()).Return(&timestreamwrite.WriteRecordsOutput{}, unknownSDKErr)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 			return mockTimestreamWriteClient, nil
 		}
 

@@ -42,19 +42,27 @@ type labelOperation string
 type longMetricsOperation func(measureValueName string) (labelOperation, error)
 
 // Store the initialization function calls to allow unit tests to mock the creation of real clients.
-var initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+var initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
 	sess, err := session.NewSession(config)
 	if err != nil {
 		return nil, err
 	}
-	return timestreamwrite.New(sess), nil
+	if endpoint != "" {
+		return timestreamwrite.New(sess, &aws.Config{Endpoint: aws.String(endpoint)}), nil
+	} else {
+		return timestreamwrite.New(sess), nil
+	}
 }
-var initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
+var initQueryClient = func(config *aws.Config, endpoint string) (timestreamqueryiface.TimestreamQueryAPI, error) {
 	sess, err := session.NewSession(config)
 	if err != nil {
 		return nil, err
 	}
-	return timestreamquery.New(sess), nil
+	if endpoint != "" {
+		return timestreamquery.New(sess, &aws.Config{Endpoint: aws.String(endpoint)}), nil
+	} else {
+		return timestreamquery.New(sess), nil
+	}
 }
 
 // recordDestinationMap is a nested map that stores slices of Records based on the ingestion destination.
@@ -91,6 +99,7 @@ type QueryClient struct {
 	readExecutionTime prometheus.Histogram
 	readRequests      prometheus.Counter
 	timestreamQuery   timestreamqueryiface.TimestreamQueryAPI
+	endpoint          string
 }
 
 type WriteClient struct {
@@ -104,6 +113,7 @@ type WriteClient struct {
 	timestreamWrite           timestreamwriteiface.TimestreamWriteAPI
 	failOnLongMetricLabelName bool
 	failOnInvalidSample       bool
+	endpoint                  string
 }
 
 type Client struct {
@@ -124,11 +134,12 @@ func NewBaseClient(databaseLabel, tableLabel string) *Client {
 }
 
 // NewQueryClient creates a new Timestream query client with the given set of configuration.
-func (c *Client) NewQueryClient(logger log.Logger, configs *aws.Config) {
+func (c *Client) NewQueryClient(logger log.Logger, configs *aws.Config, endpoint string) {
 	c.queryClient = &QueryClient{
 		client: c,
 		logger: logger,
 		config: configs,
+		endpoint: endpoint,
 		readRequests: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: "timestream_connector_read_requests_total",
@@ -146,13 +157,14 @@ func (c *Client) NewQueryClient(logger log.Logger, configs *aws.Config) {
 }
 
 // NewWriteClient creates a new Timestream write client with a given set of configurations.
-func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) {
+func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool, endpoint string) {
 	c.writeClient = &WriteClient{
 		client:                    c,
 		logger:                    logger,
 		config:                    configs,
 		failOnLongMetricLabelName: failOnLongMetricLabelName,
 		failOnInvalidSample:       failOnInvalidSample,
+		endpoint:                  endpoint,
 		ignoredSamples: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: "timestream_connector_ignored_samples_total",
@@ -185,7 +197,10 @@ func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLo
 func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.Credentials) error {
 	wc.config.Credentials = credentials
 	var err error
-	wc.timestreamWrite, err = initWriteClient(wc.config)
+	if wc.endpoint != "" {
+		LogInfo(wc.logger, "Ingest Endpoint: ", wc.endpoint)
+	}
+	wc.timestreamWrite, err = initWriteClient(wc.config, wc.endpoint)
 	if err != nil {
 		LogError(wc.logger, "Unable to construct a new session with the given credentials", err)
 		return err
@@ -225,7 +240,10 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 func (qc *QueryClient) Read(req *prompb.ReadRequest, credentials *credentials.Credentials) (*prompb.ReadResponse, error) {
 	qc.config.Credentials = credentials
 	var err error
-	qc.timestreamQuery, err = initQueryClient(qc.config)
+	if qc.endpoint != "" {
+		LogInfo(qc.logger, "Query Endpoint: ", qc.endpoint)
+	}
+	qc.timestreamQuery, err = initQueryClient(qc.config, qc.endpoint)
 	if err != nil {
 		LogError(qc.logger, "Unable to construct a new session with the given credentials", err)
 		return nil, err

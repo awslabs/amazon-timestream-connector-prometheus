@@ -52,12 +52,12 @@ const (
 
 var (
 	// Store the initialization function calls and client retrieval calls to allow unit tests to mock the creation of real clients.
-	createWriteClient = func(timestreamClient *timestream.Client, logger log.Logger, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) {
-		timestreamClient.NewWriteClient(logger, configs, failOnLongMetricLabelName, failOnInvalidSample)
+	createWriteClient = func(timestreamClient *timestream.Client, logger log.Logger, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool, endpoint string) {
+		timestreamClient.NewWriteClient(logger, configs, failOnLongMetricLabelName, failOnInvalidSample, endpoint)
 	}
-	createQueryClient = func(timestreamClient *timestream.Client, logger log.Logger, configs *aws.Config, maxRetries int) {
+	createQueryClient = func(timestreamClient *timestream.Client, logger log.Logger, configs *aws.Config, maxRetries int, endpoint string) {
 		configs.MaxRetries = aws.Int(maxRetries)
-		timestreamClient.NewQueryClient(logger, configs)
+		timestreamClient.NewQueryClient(logger, configs, endpoint)
 	}
 	getWriteClient = func(timestreamClient *timestream.Client) writer { return timestreamClient.WriteClient() }
 	getQueryClient = func(timestreamClient *timestream.Client) reader { return timestreamClient.QueryClient() }
@@ -91,6 +91,8 @@ type connectionConfig struct {
 	maxRetries                int
 	certificate               string
 	key                       string
+	ingestEndpoint            string
+	queryEndpoint             string
 }
 
 func main() {
@@ -112,10 +114,10 @@ func main() {
 		timestreamClient := timestream.NewBaseClient(cfg.databaseLabel, cfg.tableLabel)
 
 		awsQueryConfigs.MaxRetries = aws.Int(cfg.maxRetries)
-		timestreamClient.NewQueryClient(logger, awsQueryConfigs)
+		timestreamClient.NewQueryClient(logger, awsQueryConfigs, cfg.queryEndpoint)
 
 		awsWriteConfigs.MaxRetries = aws.Int(writeClientMaxRetries)
-		timestreamClient.NewWriteClient(logger, awsWriteConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample)
+		timestreamClient.NewWriteClient(logger, awsWriteConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample, cfg.ingestEndpoint)
 
 		timestream.LogInfo(logger, "Successfully created Timestream clients to handle read and write requests from Prometheus.")
 
@@ -182,7 +184,7 @@ func handleWriteRequest(reqBuf []byte, timestreamClient *timestream.Client, awsC
 		}, nil
 	}
 
-	createWriteClient(timestreamClient, logger, awsConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample)
+	createWriteClient(timestreamClient, logger, awsConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample, cfg.ingestEndpoint)
 
 	timestream.LogInfo(logger, "Successfully created a Timestream write client to handle write requests from Prometheus.")
 
@@ -212,7 +214,7 @@ func handleReadRequest(reqBuf []byte, timestreamClient *timestream.Client, awsCo
 		return createErrorResponse(err.Error())
 	}
 
-	createQueryClient(timestreamClient, logger, awsConfigs, cfg.maxRetries)
+	createQueryClient(timestreamClient, logger, awsConfigs, cfg.maxRetries, cfg.queryEndpoint)
 
 	timestream.LogInfo(logger, "Successfully created a Timestream query client to handle write requests from Prometheus.")
 
@@ -340,6 +342,9 @@ func parseEnvironmentVariables() (*connectionConfig, error) {
 		return nil, errors.NewParseRetriesError(retries)
 	}
 
+	cfg.ingestEndpoint = getOrDefault(ingestEndpointConfig)
+	cfg.queryEndpoint = getOrDefault(queryEndpointConfig)
+
 	cfg.promlogConfig = promlog.Config{Level: &promlog.AllowedLevel{}, Format: &promlog.AllowedFormat{}}
 	cfg.promlogConfig.Level.Set(getOrDefault(promlogLevelConfig))
 	cfg.promlogConfig.Format.Set(getOrDefault(promlogFormatConfig))
@@ -374,6 +379,8 @@ func parseFlags() *connectionConfig {
 		Default(failOnInvalidSampleConfig.defaultValue).StringVar(&failOnInvalidSample)
 	a.Flag(certificateConfig.flag, "TLS server certificate file.").Default(certificateConfig.defaultValue).StringVar(&cfg.certificate)
 	a.Flag(keyConfig.flag, "TLS server private key file.").Default(keyConfig.defaultValue).StringVar(&cfg.key)
+	a.Flag(ingestEndpointConfig.flag, "The ingestion endpoint for private link.").Default("").StringVar(&cfg.ingestEndpoint)
+	a.Flag(queryEndpointConfig.flag, "The query endpoint for private link.").Default("").StringVar(&cfg.queryEndpoint)
 
 	flag.AddFlags(a, &cfg.promlogConfig)
 
