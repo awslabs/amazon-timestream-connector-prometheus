@@ -256,10 +256,10 @@ func createReadHints() *prompb.ReadHints {
 // createClient creates a new Timestream client containing a Timestream query client and a Timestream write client.
 func createClient(t *testing.T, logger log.Logger, database, table string, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) *timestream.Client {
 	client := timestream.NewBaseClient(database, table)
-	client.NewQueryClient(logger, configs)
+	client.NewQueryClient(logger, configs, "")
 
 	configs.MaxRetries = aws.Int(awsClient.DefaultRetryerMaxNumRetries)
-	client.NewWriteClient(logger, configs, failOnLongMetricLabelName, failOnInvalidSample)
+	client.NewWriteClient(logger, configs, failOnLongMetricLabelName, failOnInvalidSample, "")
 	return client
 }
 
