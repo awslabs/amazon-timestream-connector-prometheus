@@ -103,7 +103,7 @@ func TestWriteClient(t *testing.T) {
 	}
 	for _, test := range successTestCase {
 		t.Run(test.testName, func(t *testing.T) {
-			err := clientDisableFailOnLongLabelName.WriteClient().Write(test.request, test.credentials)
+			_, err := clientDisableFailOnLongLabelName.WriteClient().Write(test.request, test.credentials)
 			assert.Nil(t, err)
 		})
 	}
@@ -117,7 +117,7 @@ func TestWriteClient(t *testing.T) {
 	}
 	for _, test := range invalidTestCase {
 		t.Run(test.testName, func(t *testing.T) {
-			err := clientEnableFailOnLongLabelName.WriteClient().Write(test.request, test.credentials)
+			_, err := clientEnableFailOnLongLabelName.WriteClient().Write(test.request, test.credentials)
 			assert.NotNil(t, err)
 		})
 	}
@@ -161,7 +161,7 @@ func TestQueryClient(t *testing.T) {
 	awsConfigs := &aws.Config{Region: aws.String(region)}
 	clientDisableFailOnLongLabelName := createClient(t, logger, databaseLabel, tableLabel, awsConfigs, false, false)
 
-	err := clientDisableFailOnLongLabelName.WriteClient().Write(writeReq, awsCredentials)
+	_, err := clientDisableFailOnLongLabelName.WriteClient().Write(writeReq, awsCredentials)
 	assert.Nil(t, err)
 
 	invalidTestCase := []struct {
