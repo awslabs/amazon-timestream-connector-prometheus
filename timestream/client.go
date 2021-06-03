@@ -19,9 +19,11 @@ package timestream
 
 import (
 	"fmt"
+	"os"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/timestreamquery"
 	"github.com/aws/aws-sdk-go/service/timestreamquery/timestreamqueryiface"
@@ -47,22 +49,34 @@ var initWriteClient = func(config *aws.Config, endpoint string) (timestreamwrite
 	if err != nil {
 		return nil, err
 	}
+	tcfg := &aws.Config{}
 	if endpoint != "" {
-		return timestreamwrite.New(sess, &aws.Config{Endpoint: aws.String(endpoint)}), nil
-	} else {
-		return timestreamwrite.New(sess), nil
+		tcfg.Endpoint = aws.String(endpoint)
 	}
+	wclient := timestreamwrite.New(sess, tcfg)
+	// Add the user agent version
+	useragent := fmt.Sprintf("PrometheusTimestream/%s/%s", os.Getenv("AWS_LAMBDA_FUNCTION_NAME"), Version)
+	wclient.Handlers.Send.PushFront(func(r *request.Request) {
+		r.HTTPRequest.Header.Set("User-Agent", useragent)
+	})
+	return wclient, nil
 }
 var initQueryClient = func(config *aws.Config, endpoint string) (timestreamqueryiface.TimestreamQueryAPI, error) {
 	sess, err := session.NewSession(config)
 	if err != nil {
 		return nil, err
 	}
+	tcfg := &aws.Config{}
 	if endpoint != "" {
-		return timestreamquery.New(sess, &aws.Config{Endpoint: aws.String(endpoint)}), nil
-	} else {
-		return timestreamquery.New(sess), nil
+		tcfg.Endpoint = aws.String(endpoint)
 	}
+	qclient := timestreamquery.New(sess, tcfg)
+	// Add the user agent version
+	useragent := fmt.Sprintf("PrometheusTimestream/%s/%s", os.Getenv("AWS_LAMBDA_FUNCTION_NAME"), Version)
+	qclient.Handlers.Send.PushFront(func(r *request.Request) {
+		r.HTTPRequest.Header.Set("User-Agent", useragent)
+	})
+	return qclient, nil
 }
 
 // recordDestinationMap is a nested map that stores slices of Records based on the ingestion destination.
@@ -194,26 +208,30 @@ func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLo
 }
 
 // Write sends the prompb.WriteRequest to timestreamwriteiface.TimestreamWriteAPI
-func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.Credentials) error {
+func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.Credentials) ([3]int64, error) {
 	wc.config.Credentials = credentials
 	var err error
+	nilresp := [3]int64{0, 0, 0}
 	if wc.endpoint != "" {
 		LogInfo(wc.logger, "Ingest Endpoint: ", wc.endpoint)
 	}
 	wc.timestreamWrite, err = initWriteClient(wc.config, wc.endpoint)
 	if err != nil {
 		LogError(wc.logger, "Unable to construct a new session with the given credentials", err)
-		return err
+		return nilresp, err
 	}
 
 	recordMap := make(recordDestinationMap)
 	recordMap, err = wc.convertToRecords(req.Timeseries, recordMap)
 	if err != nil {
 		LogError(wc.logger, "Unable to convert the received Prometheus write request to Timestream Records.", err)
-		return err
+		return nilresp, err
 	}
 
 	var sdkErr error
+	var ctime int64
+	var recordlen int64
+	var numWrites int64
 	for database, tableMap := range recordMap {
 		for table, records := range tableMap {
 			writeRecordsInput := &timestreamwrite.WriteRecordsInput{
@@ -224,6 +242,9 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 			begin := time.Now()
 			_, err = wc.timestreamWrite.WriteRecords(writeRecordsInput)
 			duration := time.Since(begin).Seconds()
+			ctime += int64(time.Since(begin))
+			recordlen += int64(len(records))
+			numWrites += int64(1)
 			if err != nil {
 				sdkErr = wc.handleSDKErr(req, err, sdkErr)
 			}
@@ -232,7 +253,8 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 		}
 	}
 
-	return sdkErr
+	resp := [3]int64{ctime, recordlen, numWrites}
+	return resp, sdkErr
 }
 
 // Read converts the Prometheus prompb.ReadRequest into Timestream queries and return
@@ -343,6 +365,7 @@ func (wc *WriteClient) convertToRecords(series []*prompb.TimeSeries, recordMap r
 
 // processTimeSeries processes a slice of *prompb.TimeSeries to a slice of *timestreamwrite.Record
 func processTimeSeries(wc *WriteClient, operationOnLongMetrics longMetricsOperation, series []*prompb.TimeSeries, recordMap recordDestinationMap) (recordDestinationMap, error) {
+	var numRecords int
 	for _, timeSeries := range series {
 		var dimensions []*timestreamwrite.Dimension
 		var err error
@@ -403,9 +426,11 @@ func processTimeSeries(wc *WriteClient, operationOnLongMetrics longMetricsOperat
 			continue
 		}
 
+		numRecords += 1
 		recordMap[databaseName][tableName] = records
 
 	}
+	LogInfo(wc.logger, "Number of records: ", numRecords)
 	return recordMap, nil
 }
 

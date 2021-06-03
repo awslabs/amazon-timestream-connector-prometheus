@@ -522,7 +522,7 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
 
-		err := c.writeClient.Write(createNewRequestTemplate(), mockCredentials)
+		_, err := c.writeClient.Write(createNewRequestTemplate(), mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertExpectations(t)
@@ -561,7 +561,7 @@ func TestWriteClientWrite(t *testing.T) {
 			Value:     measureValue,
 		})
 
-		err := c.writeClient.Write(req, mockCredentials)
+		_, err := c.writeClient.Write(req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
@@ -598,7 +598,7 @@ func TestWriteClientWrite(t *testing.T) {
 		req := createNewRequestTemplate()
 		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplateWithDifferentDestination())
 
-		err := c.writeClient.Write(req, mockCredentials)
+		_, err := c.writeClient.Write(req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 2)
@@ -632,7 +632,7 @@ func TestWriteClientWrite(t *testing.T) {
 		req := createNewRequestTemplate()
 		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplate())
 
-		err := c.writeClient.Write(req, mockCredentials)
+		_, err := c.writeClient.Write(req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
@@ -666,7 +666,7 @@ func TestWriteClientWrite(t *testing.T) {
 		req := createNewRequestTemplate()
 		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplateWithoutDatabaseLabelAndTableLabel())
 
-		err := c.writeClient.Write(req, mockCredentials)
+		_, err := c.writeClient.Write(req, mockCredentials)
 		expectedErr := errors.NewMissingDatabaseWithWriteError(mockDatabaseLabel, createTimeSeriesTemplateWithoutDatabaseLabelAndTableLabel())
 		assert.Equal(t, err, expectedErr)
 	})
@@ -698,7 +698,7 @@ func TestWriteClientWrite(t *testing.T) {
 		req := createNewRequestTemplate()
 		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplateWithoutDatabaseLabel())
 
-		err := c.writeClient.Write(req, mockCredentials)
+		_, err := c.writeClient.Write(req, mockCredentials)
 		expectedErr := errors.NewMissingDatabaseWithWriteError(mockDatabaseLabel, createTimeSeriesTemplateWithoutDatabaseLabel())
 		assert.Equal(t, err, expectedErr)
 	})
@@ -730,7 +730,7 @@ func TestWriteClientWrite(t *testing.T) {
 		req := createNewRequestTemplate()
 		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplateWithoutTableLabel())
 
-		err := c.writeClient.Write(req, mockCredentials)
+		_, err := c.writeClient.Write(req, mockCredentials)
 		expectedErr := errors.NewMissingTableWithWriteError(mockTableLabel, createTimeSeriesTemplateWithoutTableLabel())
 		assert.Equal(t, err, expectedErr)
 	})
@@ -757,7 +757,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		input := createNewRequestTemplate()
 
-		err := c.WriteClient().Write(input, mockCredentials)
+		_, err := c.WriteClient().Write(input, mockCredentials)
 		assert.Equal(t, internalServerError, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
@@ -795,7 +795,7 @@ func TestWriteClientWrite(t *testing.T) {
 		input := createNewRequestTemplate()
 		input.Timeseries = append(input.Timeseries, createTimeSeriesTemplateWithDifferentDestination())
 
-		err := c.WriteClient().Write(input, mockCredentials)
+		_, err := c.WriteClient().Write(input, mockCredentials)
 		assert.Equal(t, internalServerError, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 2)
@@ -833,7 +833,7 @@ func TestWriteClientWrite(t *testing.T) {
 		input := createNewRequestTemplate()
 		input.Timeseries = append(input.Timeseries, createTimeSeriesTemplateWithDifferentDestination())
 
-		err := c.WriteClient().Write(input, mockCredentials)
+		_, err := c.WriteClient().Write(input, mockCredentials)
 		assert.Equal(t, internalServerError, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 2)
@@ -870,7 +870,7 @@ func TestWriteClientWrite(t *testing.T) {
 			},
 		}
 
-		err := c.WriteClient().Write(input, mockCredentials)
+		_, err := c.WriteClient().Write(input, mockCredentials)
 		assert.IsType(t, &errors.MissingDatabaseWithWriteError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -906,7 +906,7 @@ func TestWriteClientWrite(t *testing.T) {
 			},
 		}
 
-		err := c.WriteClient().Write(input, mockCredentials)
+		_, err := c.WriteClient().Write(input, mockCredentials)
 		assert.IsType(t, &errors.MissingTableWithWriteError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -938,7 +938,7 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
 
-		err := c.WriteClient().Write(createNewRequestTemplate(), mockCredentials)
+		_, err := c.WriteClient().Write(createNewRequestTemplate(), mockCredentials)
 		assert.Equal(t, requestError, err)
 
 		mockTimestreamWriteClient.AssertExpectations(t)
@@ -968,7 +968,7 @@ func TestWriteClientWrite(t *testing.T) {
 		c.writeClient.failOnInvalidSample = true
 
 		req := createNewRequestTemplate()
-		err := c.WriteClient().Write(req, mockCredentials)
+		_, err := c.WriteClient().Write(req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
@@ -991,7 +991,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Samples[0].Value = math.NaN()
-		err := c.WriteClient().Write(req, mockCredentials)
+		_, err := c.WriteClient().Write(req, mockCredentials)
 		assert.IsType(t, &errors.InvalidSampleValueError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -1014,7 +1014,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Samples[0].Value = math.NaN()
-		err := c.WriteClient().Write(req, mockCredentials)
+		_, err := c.WriteClient().Write(req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -1037,11 +1037,11 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Samples[0].Value = math.Inf(1)
-		err := c.WriteClient().Write(req, mockCredentials)
+		_, err := c.WriteClient().Write(req, mockCredentials)
 		assert.NotNil(t, err)
 
 		req.Timeseries[0].Samples[0].Value = math.Inf(-1)
-		err = c.WriteClient().Write(req, mockCredentials)
+		_, err = c.WriteClient().Write(req, mockCredentials)
 		assert.IsType(t, &errors.InvalidSampleValueError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -1064,11 +1064,11 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Samples[0].Value = math.Inf(1)
-		err := c.WriteClient().Write(req, mockCredentials)
+		_, err := c.WriteClient().Write(req, mockCredentials)
 		assert.Nil(t, err)
 
 		req.Timeseries[0].Samples[0].Value = math.Inf(-1)
-		err = c.WriteClient().Write(req, mockCredentials)
+		_, err = c.WriteClient().Write(req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -1091,7 +1091,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Labels[0].Value = mockLongMetric
-		err := c.WriteClient().Write(req, mockCredentials)
+		_, err := c.WriteClient().Write(req, mockCredentials)
 		assert.IsType(t, &errors.LongLabelNameError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -1114,7 +1114,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Labels[0].Value = mockLongMetric
-		err := c.WriteClient().Write(req, mockCredentials)
+		_, err := c.WriteClient().Write(req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -1137,7 +1137,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Labels[1].Name = mockLongMetric
-		err := c.WriteClient().Write(req, mockCredentials)
+		_, err := c.WriteClient().Write(req, mockCredentials)
 		assert.IsType(t, &errors.LongLabelNameError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -1160,7 +1160,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Labels[1].Name = mockLongMetric
-		err := c.WriteClient().Write(req, mockCredentials)
+		_, err := c.WriteClient().Write(req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -1183,7 +1183,7 @@ func TestWriteClientWrite(t *testing.T) {
 		c.writeClient = createNewWriteClientTemplate(c)
 
 		req := createNewRequestTemplate()
-		err := c.WriteClient().Write(req, mockCredentials)
+		_, err := c.WriteClient().Write(req, mockCredentials)
 		assert.Equal(t, unknownSDKErr, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)

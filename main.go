@@ -65,7 +65,7 @@ var (
 )
 
 type writer interface {
-	Write(req *prompb.WriteRequest, credentials *credentials.Credentials) error
+	Write(req *prompb.WriteRequest, credentials *credentials.Credentials) ([3]int64, error)
 	Name() string
 }
 
@@ -114,11 +114,14 @@ func main() {
 		timestreamClient := timestream.NewBaseClient(cfg.databaseLabel, cfg.tableLabel)
 
 		awsQueryConfigs.MaxRetries = aws.Int(cfg.maxRetries)
+
 		timestreamClient.NewQueryClient(logger, awsQueryConfigs, cfg.queryEndpoint)
 
 		awsWriteConfigs.MaxRetries = aws.Int(writeClientMaxRetries)
 		timestreamClient.NewWriteClient(logger, awsWriteConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample, cfg.ingestEndpoint)
 
+		timestream.LogInfo(logger, "Query endpoint: ", cfg.queryEndpoint)
+		timestream.LogInfo(logger, "Ingest endpoint: ", cfg.ingestEndpoint)
 		timestream.LogInfo(logger, "Successfully created Timestream clients to handle read and write requests from Prometheus.")
 
 		// Register TimestreamClient to Prometheus for it to scrape metrics
@@ -186,9 +189,10 @@ func handleWriteRequest(reqBuf []byte, timestreamClient *timestream.Client, awsC
 
 	createWriteClient(timestreamClient, logger, awsConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample, cfg.ingestEndpoint)
 
+	timestream.LogInfo(logger, "Ingest endpoint: ")
 	timestream.LogInfo(logger, "Successfully created a Timestream write client to handle write requests from Prometheus.")
 
-	if err := getWriteClient(timestreamClient).Write(&writeRequest, credentials); err != nil {
+	if resp, err := getWriteClient(timestreamClient).Write(&writeRequest, credentials); err != nil {
 		errorCode := http.StatusBadRequest
 
 		if requestError, ok := err.(awserr.RequestFailure); ok {
@@ -199,6 +203,10 @@ func handleWriteRequest(reqBuf []byte, timestreamClient *timestream.Client, awsC
 			StatusCode: errorCode,
 			Body:       err.Error(),
 		}, nil
+	} else {
+		timestream.LogInfo(logger, "Ingest time: ", resp[0])
+		timestream.LogInfo(logger, "Number of records : ", resp[1])
+		timestream.LogInfo(logger, "Number of write calls : ", resp[2])
 	}
 
 	return events.APIGatewayProxyResponse{
@@ -216,6 +224,7 @@ func handleReadRequest(reqBuf []byte, timestreamClient *timestream.Client, awsCo
 
 	createQueryClient(timestreamClient, logger, awsConfigs, cfg.maxRetries, cfg.queryEndpoint)
 
+	timestream.LogInfo(logger, "Query endpoint: ", cfg.queryEndpoint)
 	timestream.LogInfo(logger, "Successfully created a Timestream query client to handle write requests from Prometheus.")
 
 	response, err := getQueryClient(timestreamClient).Read(&readRequest, credentials)
@@ -453,7 +462,7 @@ func createWriteHandler(logger log.Logger, writers []writer) func(w http.Respons
 			return
 		}
 
-		if err := writers[0].Write(&req, awsCredentials); err != nil {
+		if resp, err := writers[0].Write(&req, awsCredentials); err != nil {
 			switch err := err.(type) {
 			case awserr.RequestFailure:
 				requestError := err.(awserr.RequestFailure)
@@ -468,6 +477,10 @@ func createWriteHandler(logger log.Logger, writers []writer) func(w http.Respons
 				// Others will halt the program.
 				halt(1)
 			}
+		} else {
+			timestream.LogInfo(logger, "Ingest time: ", resp[0])
+			timestream.LogInfo(logger, "Number of records : ", resp[1])
+			timestream.LogInfo(logger, "Number of write calls : ", resp[2])
 		}
 	}
 }
