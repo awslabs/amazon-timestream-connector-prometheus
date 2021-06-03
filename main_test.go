@@ -148,9 +148,10 @@ type requestTestCase struct {
 	expectedStatusCode int
 }
 
-func (m *mockWriter) Write(req *prompb.WriteRequest, credentials *credentials.Credentials) error {
+func (m *mockWriter) Write(req *prompb.WriteRequest, credentials *credentials.Credentials) ([3]int64, error) {
+	resp := [3]int64{0, 0, 0}
 	args := m.Called(req, credentials)
-	return args.Error(0)
+	return resp, args.Error(0)
 }
 
 type mockReader struct {
