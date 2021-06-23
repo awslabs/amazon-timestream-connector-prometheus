@@ -35,5 +35,4 @@ var (
 	certificateConfig         = &configuration{flag: "tls-certificate", envFlag: "", defaultValue: ""}
 	keyConfig                 = &configuration{flag: "tls-key", envFlag: "", defaultValue: ""}
 	ingestEndpointConfig      = &configuration{flag: "ingest-endpoint", envFlag: "ingest_endpoint", defaultValue: ""}
-	queryEndpointConfig       = &configuration{flag: "query-endpoint", envFlag: "query_endpoint", defaultValue: ""}
 )

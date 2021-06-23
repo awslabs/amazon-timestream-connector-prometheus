@@ -51,7 +51,6 @@ const (
 	tableLabel            = "foo"
 	databaseLabel         = "bar"
 	assertInputMessage    = "Errors must not occur while marshalling input data."
-	assertResponseMessage = "Error must not occur while reading the response body from the test output."
 	encodedBasicAuth      = "Basic QWxhZGRpbjpPcGVuU2VzYW1l"
 	writeRequestType      = "*prompb.WriteRequest"
 	awsCredentialsType    = "*credentials.Credentials"
@@ -68,7 +67,6 @@ var (
 		),
 		cmpopts.IgnoreFields(promlog.AllowedLevel{}, "o")}
 	mockUnixTime    = time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
-	mockEndUnixTime = mockUnixTime + 30000
 	validTimeSeries = &prompb.TimeSeries{
 		Labels: []*prompb.Label{
 			{
@@ -787,15 +785,6 @@ func createDefaultPromlogConfig() promlog.Config {
 	level.Set("info")
 	promlogConfig := promlog.Config{Level: level, Format: format}
 	return promlogConfig
-}
-
-// createLabelMatcher creates a Prometheus LabelMatcher object with parameters.
-func createLabelMatcher(matcherType prompb.LabelMatcher_Type, name string, value string) *prompb.LabelMatcher {
-	return &prompb.LabelMatcher{
-		Type:  matcherType,
-		Name:  name,
-		Value: value,
-	}
 }
 
 // getReaderHelper returns a reader for test.

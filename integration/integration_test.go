@@ -20,12 +20,10 @@ package integration
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
-	awsClient "github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/timestreamwrite"
 	"github.com/go-kit/kit/log"
-	"github.com/google/go-cmp/cmp"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
@@ -39,7 +37,6 @@ import (
 var (
 	logger             = log.NewNopLogger()
 	nowUnix            = time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
-	endUnix            = nowUnix + 30000
 	destinations       = map[string][]string{database: {table}, database2: {table2}}
 	writeClient        = timestreamwrite.New(session.Must(session.NewSession()), aws.NewConfig().WithRegion(region))
 	awsCredentials     = writeClient.Config.Credentials
@@ -173,37 +170,4 @@ func createClient(t *testing.T, logger log.Logger, database, table string, confi
 	client := timestream.NewBaseClient(database, table)
 	client.NewWriteClient(logger, configs, failOnLongMetricLabelName, failOnInvalidSample, "")
 	return client
-}
-
-// createWriteRequest creates a write request for query test.
-func createWriteRequest() *prompb.WriteRequest {
-	return &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{
-		{
-			Labels: []*prompb.Label{
-				{
-					Name:  model.MetricNameLabel,
-					Value: queryMetricName,
-				},
-				{
-					Name:  databaseLabel,
-					Value: database,
-				},
-				{
-					Name:  tableLabel,
-					Value: table,
-				},
-				{
-					Name:  model.JobLabel,
-					Value: jobName,
-				},
-			},
-
-			Samples: []prompb.Sample{
-				{
-					Timestamp: nowUnix,
-					Value:     value,
-				},
-			},
-		},
-	}}
 }
