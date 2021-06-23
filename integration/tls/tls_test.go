@@ -160,7 +160,7 @@ func connectorStatusCheck(t *testing.T, dockerClient *client.Client, ctx context
 	var jsonRes types.ContainerJSON
 	var err error
 
-	for i := 0; i < retries; i++ {
+	for i := 0; i < 6; i++ {
 		// Busy wait for a minute to give the containers time to send the first request.
 		jsonRes, err = dockerClient.ContainerInspect(ctx, respID)
 		out, _ := dockerClient.ContainerLogs(ctx, respID, types.ContainerLogsOptions{ShowStdout: true})
