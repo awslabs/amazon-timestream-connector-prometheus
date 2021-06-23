@@ -16,14 +16,12 @@ package timestream
 
 import (
 	goErrors "errors"
-	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/private/protocol"
 	"github.com/aws/aws-sdk-go/service/timestreamwrite"
 	"github.com/aws/aws-sdk-go/service/timestreamwrite/timestreamwriteiface"
 	"github.com/go-kit/kit/log"
-	"github.com/google/go-cmp/cmp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
@@ -43,11 +41,8 @@ var (
 	mockUnixTime       = time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 	mockCounter        = prometheus.NewCounter(prometheus.CounterOpts{})
 	mockHistogram      = prometheus.NewHistogram(prometheus.HistogramOpts{})
-	mockEndUnixTime    = mockUnixTime + 30000
 	mockAwsConfigs     = &aws.Config{}
 	mockCredentials    = credentials.AnonymousCredentials
-	startUnixInSeconds = mockUnixTime / millisToSecConversionRate
-	endUnixInSeconds   = mockEndUnixTime / millisToSecConversionRate
 )
 
 const (
@@ -59,23 +54,9 @@ const (
 	mockDatabaseName2 = "promDB2"
 	mockRegion        = "us-east-1"
 	mockLongMetric    = "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
-	instance          = "localhost:9090"
 	metricName        = "go_gc_duration_seconds"
-	job               = "prometheus"
 	measureValueStr   = "0.001995"
-	invalidValue      = "invalidValue"
-	invalidTime       = "invalidTime"
-	timestamp1        = "2020-10-01 15:02:02.000000000"
-	timestamp2        = "2020-10-01 20:00:00.000000000"
-	quantile          = "0.5"
-	instanceRegex     = "9090*"
-	jobRegex          = "pro*"
-	invalidRegex      = "(?P<login>\\w+)"
-	unixTime1         = 1601564522000
-	unixTime2         = 1601582400000
 	measureValue      = 0.001995
-	invalidMatcher    = 10
-	functionType      = "func(*timestreamquery.QueryOutput, bool) bool"
 )
 
 type mockTimestreamWriteClient struct {
@@ -118,7 +99,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -151,7 +131,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -192,7 +171,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -226,7 +204,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -260,7 +237,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -292,7 +268,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -324,7 +299,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -351,7 +325,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -388,7 +361,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -426,7 +398,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -450,7 +421,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -486,7 +456,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -534,7 +503,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -562,7 +530,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -584,7 +551,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -607,7 +573,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -630,7 +595,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -657,7 +621,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -684,7 +647,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -707,7 +669,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -730,7 +691,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -753,7 +713,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -778,7 +737,6 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 
 		c := &Client{
-			queryClient:   nil,
 			databaseLabel: mockDatabaseLabel,
 			tableLabel:    mockTableLabel,
 		}
@@ -905,7 +863,7 @@ func createNewRecordTemplate() *timestreamwrite.Record {
 		},
 		MeasureName:      aws.String(metricName),
 		MeasureValue:     aws.String(measureValueStr),
-		MeasureValueType: aws.String(timestreamquery.ScalarTypeDouble),
+		MeasureValueType: aws.String("DOUBLE"),
 		Time:             aws.String(strconv.FormatInt(mockUnixTime, 10)),
 		TimeUnit:         aws.String(timestreamwrite.TimeUnitMilliseconds),
 	}

@@ -77,7 +77,6 @@ type connectionConfig struct {
 	promlogConfig             promlog.Config
 	tableLabel                string
 	telemetryPath             string
-	maxRetries                int
 	certificate               string
 	key                       string
 	ingestEndpoint            string
@@ -269,8 +268,7 @@ func parseEnvironmentVariables() (*connectionConfig, error) {
 	cfg.databaseLabel = getOrDefault(databaseLabelConfig)
 	cfg.tableLabel = getOrDefault(tableLabelConfig)
 
-	var err error
-	err = cfg.parseBoolFromStrings(getOrDefault(enableLogConfig), getOrDefault(failOnLabelConfig), getOrDefault(failOnInvalidSampleConfig))
+	err := cfg.parseBoolFromStrings(getOrDefault(enableLogConfig), getOrDefault(failOnLabelConfig), getOrDefault(failOnInvalidSampleConfig))
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +383,7 @@ func createWriteHandler(logger log.Logger, writers []writer) func(w http.Respons
 		if resp, err := writers[0].Write(&req, awsCredentials); err != nil {
 			switch err := err.(type) {
 			case awserr.RequestFailure:
-				requestError := err.(awserr.RequestFailure)
+				requestError := err
 				http.Error(w, err.Error(), requestError.StatusCode())
 			case *errors.SDKNonRequestError:
 				http.Error(w, err.Error(), http.StatusBadRequest)
