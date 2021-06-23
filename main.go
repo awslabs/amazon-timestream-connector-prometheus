@@ -109,7 +109,6 @@ func main() {
 		prometheus.MustRegister(timestreamClient)
 
 		writers = append(writers, timestreamClient.WriteClient())
-
 		if err := serve(logger, cfg.listenAddr, writers, cfg.certificate, cfg.key); err != nil {
 			timestream.LogError(logger, "Error occurred while listening for requests.", err)
 			os.Exit(1)

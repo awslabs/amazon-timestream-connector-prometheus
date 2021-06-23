@@ -206,6 +206,7 @@ It is recommended to enable TLS encryption between Prometheus and the Prometheus
    This configuration serves the following functions:
 
    1. Configures Prometheus' remote storage destinations by setting the `url` options to the remote write endpoints, e.g. `"http://localhost:9201/write"`.
+
    2. Configures the Amazon Timestream ingestion destination for Prometheus time series by attaching a label indicating the destination database and another label indicating the destination table for all time series. **These labels are required to be present on all Prometheus time series sent to the Prometheus Connector.** If one of the labels cannot be found on any of the time series, the Prometheus Connector will log the error and halt the program. 
 
    For an example of a complete Prometheus YAML file, see [getting_started.yml](./documentation/example/getting_started.yml).
@@ -290,7 +291,7 @@ remote_write:
     ```
     
     This sample output indicates that 340 rows has been ingested.
-   
+
 ## Troubleshooting
 
 1. No Credential Providers Error

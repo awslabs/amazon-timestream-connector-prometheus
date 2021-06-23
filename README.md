@@ -54,7 +54,8 @@ The Prometheus Connector will be available in the following formats:
 
 ### Prometheus Configuration
 
-To configure Prometheus to read and write to remote storage, configure the `remote_write` sections in `prometheus.yml`. To learn more, [remote write](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write) section on Prometheus' configuration page.
+
+To configure Prometheus to write to remote storage, configure the `remote_write` sections in `prometheus.yml`. To learn more, [remote write](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write) section on Prometheus' configuration page.
 > **NOTE**: It is recommended to use the default number of samples per write request through `max_samples_per_send`. For more details see [Maximum Prometheus Samples Per Remote Write Request](#maximum-prometheus-samples-per-remote-write-request).
 
 1. Configure Prometheus' remote write destination by setting the `url` options to the Prometheus Connector's listening URL, e.g. `"http://localhost:9201/write"`.
@@ -885,7 +886,7 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
    2. Ensure database-label and table-label are set when running Prometheus Connector. Note that the configuration options for the AWS Lambda integration are in `snake_case`. For more details and examples see the [Getting Started](#getting-started) section.
 
 5. **Error** MissingDestinationError
-   
+
    **Description** The environment variables database-label and table-label must be specified in the Lambda function.
 
    **Solution** Set the environment variables database_label and table_label for the AWS Lambda Function with the following command, update the function name if necessary:

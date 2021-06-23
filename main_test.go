@@ -752,6 +752,7 @@ func prepareData(t *testing.T) ([]byte) {
 	assert.Nil(t, err)
 
 	return encodeData(writeData)
+
 }
 
 // encodeData encodes the data into snappy format then encodes the data using the standard base64 encoding.
@@ -797,6 +798,7 @@ func createLabelMatcher(matcherType prompb.LabelMatcher_Type, name string, value
 	}
 }
 
+// getReaderHelper returns a reader for test.
 func getReaderHelper(t *testing.T, message proto.Message) io.Reader {
 	data, err := proto.Marshal(message)
 	assert.Nil(t, err, assertInputMessage)
