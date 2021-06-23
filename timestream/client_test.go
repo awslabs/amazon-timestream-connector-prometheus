@@ -41,11 +41,8 @@ var (
 	mockUnixTime       = time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 	mockCounter        = prometheus.NewCounter(prometheus.CounterOpts{})
 	mockHistogram      = prometheus.NewHistogram(prometheus.HistogramOpts{})
-	mockEndUnixTime    = mockUnixTime + 30000
 	mockAwsConfigs     = &aws.Config{}
 	mockCredentials    = credentials.AnonymousCredentials
-	startUnixInSeconds = mockUnixTime / millisToSecConversionRate
-	endUnixInSeconds   = mockEndUnixTime / millisToSecConversionRate
 )
 
 const (
@@ -57,22 +54,9 @@ const (
 	mockDatabaseName2 = "promDB2"
 	mockRegion        = "us-east-1"
 	mockLongMetric    = "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
-	instance          = "localhost:9090"
 	metricName        = "go_gc_duration_seconds"
-	job               = "prometheus"
 	measureValueStr   = "0.001995"
-	invalidValue      = "invalidValue"
-	invalidTime       = "invalidTime"
-	timestamp1        = "2020-10-01 15:02:02.000000000"
-	timestamp2        = "2020-10-01 20:00:00.000000000"
-	quantile          = "0.5"
-	instanceRegex     = "9090*"
-	jobRegex          = "pro*"
-	invalidRegex      = "(?P<login>\\w+)"
-	unixTime1         = 1601564522000
-	unixTime2         = 1601582400000
 	measureValue      = 0.001995
-	invalidMatcher    = 10
 )
 
 type mockTimestreamWriteClient struct {
