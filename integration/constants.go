@@ -23,6 +23,7 @@ const (
 	table2                = "integration2"
 	region                = "us-east-1"
 	writeMetricName       = "write_metric"
+	queryMetricName       = "query_metric"
 	jobName               = "prometheus"
 	invalidRegex          = "(?P<login>\\\\w+)"
 	invalidMatcher        = 10
