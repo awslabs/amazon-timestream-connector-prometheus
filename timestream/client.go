@@ -77,12 +77,6 @@ const (
 	ignored                     labelOperation = "Ignored"
 	failed                      labelOperation = "Failed"
 	unmodified                  labelOperation = "Unmodified"
-	timeColumnName              string         = "time"
-	measureValueColumnName      string         = "measure_value::double"
-	measureNameColumnName       string         = "measure_name"
-	timestampLayout             string         = "2006-01-02 15:04:05.000000000"
-	millisToSecConversionRate                  = int64(time.Second) / int64(time.Millisecond)
-	nanosToMillisConversionRate                = int64(time.Millisecond) / int64(time.Nanosecond)
 )
 
 type WriteClient struct {

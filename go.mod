@@ -24,7 +24,7 @@ require (
 	github.com/prometheus/prometheus v2.5.0+incompatible
 	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/stretchr/testify v1.6.1
-	golang.org/x/net v0.0.0-20201009032441-dbdefad45b89 // indirect
+	golang.org/x/net v0.0.0-20201009032441-dbdefad45b89
 	golang.org/x/sys v0.0.0-20201009025420-dfb3f7c4e634 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/genproto v0.0.0-20201009135657-4d944d34d83c // indirect

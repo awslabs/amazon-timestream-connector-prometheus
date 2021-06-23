@@ -23,9 +23,6 @@ const (
 	table2                = "integration2"
 	region                = "us-east-1"
 	writeMetricName       = "write_metric"
-	jobName               = "prometheus"
-	invalidRegex          = "(?P<login>\\\\w+)"
-	invalidMatcher        = 10
 	value                 = 1.0
 	numRecords            = 100
 	memStoreRetentionHour = 5
