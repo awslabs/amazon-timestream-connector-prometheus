@@ -11,6 +11,13 @@ Metadata:
     HomePageUrl: "https://aws.amazon.com/timestream/"
     SemanticVersion: "1.1.0"
 
+Parameters:
+  Region: 
+    Type: "String"
+    Default: "us-east-1"
+    AllowedPattern: "[a-zA-Z_-][a-zA-Z0-9_-]*"
+    Description: "The region of the target Timestream endpoint."
+
 Resources:
   IAMLambdaRole:
     Type: "AWS::IAM::Role"
@@ -52,6 +59,7 @@ Resources:
         Variables:
           database_label: "prometheusDatabaseLabel"
           table_label: "prometheusTableLabel"
+          region: !Ref "Region"
       Events:
         WriteApi:
           Type: HttpApi
