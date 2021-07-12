@@ -56,6 +56,11 @@ Parameters:
     Type: "String"
     Default: "prod"
     Description: "The default stage name of the API Gateway."
+  Region: 
+    Type: "String"
+    Default: "us-east-1"
+    AllowedPattern: "[a-zA-Z_-][a-zA-Z0-9_-]*"
+    Description: "The region of the target Timestream endpoint."
 
 Resources:
   IAMLambdaRole:
@@ -98,6 +103,7 @@ Resources:
         Variables:
           database_label: !Ref "PrometheusDatabaseLabel"
           table_label: !Ref "PrometheusTableLabel"
+          region: !Ref "Region"
       Events:
         WriteApi:
           Type: HttpApi
