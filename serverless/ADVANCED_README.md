@@ -46,6 +46,7 @@ For a simpler and quicker deployment where all options are set to the default va
 | MemorySize                | The memory size of the AWS Lambda function.                  | 512                             |
 | TimeoutInMillis           | The amount of time in milliseconds to run the connector on AWS Lambda before timing out. | 15000                           |
 | WriteThrottlingBurstLimit | The number of burst write requests per second that API Gateway permits. | 1200                             |
+| Region                    | The region where the Timestream database and table are located | us-east-1                                 |
 
 `PrometheusDatabaseLabel` and `PrometheusTableLabel` are required for multi-destination to specify where the data should be stored.
 The **Configure Prometheus** section step 2 contains a configuration example for multi-destination.

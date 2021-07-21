@@ -45,6 +45,7 @@ This deployment will set all the options to the default values. For more control
 | MemorySize                | The memory size of the AWS Lambda function.                  | 512                             |
 | TimeoutInMillis           | The amount of time in milliseconds to run the connector on AWS Lambda before timing out. | 15000                           |
 | WriteThrottlingBurstLimit | The number of burst write requests per second that API Gateway permits. | 1200                             |
+| Region                    | The region where the Timestream database and table are located | us-east-1                                 |
 
 #### IAM Permissions Configuration Options
 
