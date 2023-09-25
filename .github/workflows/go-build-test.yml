@@ -1,3 +1,14 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may not use this file except in compliance with
+# the License. A copy of the License is located at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+# CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
+# and limitations under the License.
+
 name: Timestream Prometheus Connector CI
 
 on:
@@ -16,14 +27,13 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
 
-      - name: Set up Go 1.14
-        uses: actions/setup-go@v2
+      - uses: actions/setup-go@v4
         with:
-          go-version: 1.14
-        id: go
+          go-version: 'stable'
+          cache: false
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Build
         run: go build -v .
@@ -35,9 +45,14 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: 'stable'
+          cache: false
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.31
+          version: v1.54
           args: --exclude ".Log(.*)|format.Set|level.Set"
