@@ -25,6 +25,8 @@ jobs:
         with:
           go-version: 'stable'
           cache: false
+        env:
+          GO111MODULE: on
 
       - name: Checkout code
         uses: actions/checkout@v3
