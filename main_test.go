@@ -133,8 +133,14 @@ func (m *mockWriter) Write(req *prompb.WriteRequest, credentials *credentials.Cr
 func setUp() ([]string, *connectionConfig) {
 	promLogFormat := &promlog.AllowedFormat{}
 	promLogLevel := &promlog.AllowedLevel{}
-	promLogFormat.Set("logfmt")
-	promLogLevel.Set("info")
+	err := promLogFormat.Set("logfmt")
+	if err != nil {
+		return []string{}, &connectionConfig{}
+	}
+	err = promLogLevel.Set("info")
+	if err != nil {
+		return []string{}, &connectionConfig{}
+	}
 
 	return []string{"cmd", "--database-label=foo", "--table-label=bar"}, &connectionConfig{
 		clientConfig:  &clientConfig{region: "us-east-1"},
@@ -782,8 +788,14 @@ func unsetEnvironmentVariables(options []lambdaEnvOptions) {
 func createDefaultPromlogConfig() promlog.Config {
 	format := &promlog.AllowedFormat{}
 	level := &promlog.AllowedLevel{}
-	format.Set("logfmt")
-	level.Set("info")
+	err := format.Set("logfmt")
+	if err != nil {
+		return promlog.Config{}
+	}
+	err = level.Set("info")
+	if err != nil {
+		return promlog.Config{}
+	}
 	promlogConfig := promlog.Config{Level: level, Format: format}
 	return promlogConfig
 }
