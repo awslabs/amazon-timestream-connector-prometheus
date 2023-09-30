@@ -276,8 +276,15 @@ func parseEnvironmentVariables() (*connectionConfig, error) {
 	cfg.ingestEndpoint = getOrDefault(ingestEndpointConfig)
 
 	cfg.promlogConfig = promlog.Config{Level: &promlog.AllowedLevel{}, Format: &promlog.AllowedFormat{}}
-	cfg.promlogConfig.Level.Set(getOrDefault(promlogLevelConfig))
-	cfg.promlogConfig.Format.Set(getOrDefault(promlogFormatConfig))
+	err = cfg.promlogConfig.Level.Set(getOrDefault(promlogLevelConfig))
+	if err != nil {
+		return nil, err
+	}
+	
+	err = cfg.promlogConfig.Format.Set(getOrDefault(promlogFormatConfig))
+	if err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
