@@ -21,15 +21,15 @@ import (
 
 // LogError logs the provided error with the given message.
 func LogError(logger log.Logger, msg string, err error, keyvals ...interface{}) {
-	_ = level.Error(logger).Log(append([]interface{}{"message", msg, "error", err}, keyvals...)...)
+	level.Error(logger).Log(append([]interface{}{"message", msg, "error", err}, keyvals...)...)
 }
 
 // LogDebug logs at DEBUG level with the given message and any additional key-value pairs.
 func LogDebug(logger log.Logger, message string, keyvals ...interface{}) {
-	_ = level.Debug(logger).Log(append([]interface{}{"message", message}, keyvals...)...)
+	level.Debug(logger).Log(append([]interface{}{"message", message}, keyvals...)...)
 }
 
 // LogInfo logs at INFO level with the given message and any additional key-value pairs.
 func LogInfo(logger log.Logger, message string, keyvals ...interface{}) {
-	_ = level.Info(logger).Log(append([]interface{}{"message", message}, keyvals...)...)
+	level.Info(logger).Log(append([]interface{}{"message", message}, keyvals...)...)
 }

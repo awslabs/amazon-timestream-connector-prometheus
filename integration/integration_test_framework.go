@@ -28,6 +28,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -182,4 +183,19 @@ func CreateHTTPClient() *http.Client {
 			TLSHandshakeTimeout: 10 * time.Second,
 		},
 	}
+}
+
+// CreateReadRequest creates a read request.
+func CreateReadRequest(t *testing.T, query string, now time.Time, prevHour time.Time) *http.Request {
+	req, err := http.NewRequest("GET", "http://localhost:9090/api/v1/query", nil)
+	require.Nil(t, err)
+	req.Close = true
+
+	q := req.URL.Query()
+	q.Add("query", query)
+	q.Add("time", strconv.FormatInt(now.Unix(), 10))
+	q.Add("_", strconv.FormatInt(prevHour.Unix(), 10))
+	req.URL.RawQuery = q.Encode()
+
+	return req
 }
