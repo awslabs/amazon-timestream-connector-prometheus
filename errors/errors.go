@@ -21,7 +21,6 @@ import (
 )
 
 type baseConnectorError struct {
-	error
 	statusCode int
 	errorMsg   string
 	message    string
