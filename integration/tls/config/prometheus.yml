@@ -29,3 +29,16 @@ remote_write:
         regex: .*
         replacement: tlsDB
         target_label: timestreamDatabase
+
+remote_read:
+  - url: "https://host.docker.internal:9201/read"
+
+    tls_config:
+      ca_file: "/etc/prometheus/RootCA.pem"
+
+    basic_auth:
+      # Update the user name and password with valid IAM credentials.
+      username: accessKey
+      password: secretAccessKey
+
+    read_recent: true

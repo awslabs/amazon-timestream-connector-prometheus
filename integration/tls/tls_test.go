@@ -45,20 +45,26 @@ const (
 	connectorDockerImagePath   = "../../resources/timestream-prometheus-connector-docker-image-1.1.0.tar.gz"
 	databaseLabelCMD           = "--database-label=timestreamDatabase"
 	tableLabelCMd              = "--table-label=timestreamTable"
+	defaultDatabaseCMD         = "--default-database=PrometheusDatabase"
+	defaultTableCMd            = "--default-table=PrometheusTable"
 	tlsCertificateCMD          = "--tls-certificate=/root/cert/serverCertificate.crt"
 	tlsKeyCMD                  = "--tls-key=/root/cert/serverPrivateKey.key"
 	tlsUnmatchedCertificateCMD = "--tls-certificate=/root/cert/rootCA.pem"
 	tlsInvalidKeyFileCMD       = "--tls-key=/root/cert/invalidPrivateKey.key"
 	region                     = "us-east-1"
+	databaseLabel              = "timestreamDatabase"
+	tableLabel                 = "timestreamTable"
 	database                   = "tlsDB"
 	table                      = "tls"
+	retries                    = 6
+	expectedStatusCode         = 200
 )
 
 var (
-	connectorTLSCMDs                      = []string{databaseLabelCMD, tableLabelCMd, tlsCertificateCMD, tlsKeyCMD}
-	connectorCMDsWithUnmatchedCertificate = []string{databaseLabelCMD, tableLabelCMd, tlsUnmatchedCertificateCMD, tlsKeyCMD}
-	connectorCMDsWithUnmatchedKey         = []string{databaseLabelCMD, tableLabelCMd, tlsCertificateCMD, tlsInvalidKeyFileCMD}
-	connectorCMDsWithInvalidFile          = []string{databaseLabelCMD, tableLabelCMd, tlsKeyCMD, tlsKeyCMD}
+	connectorTLSCMDs                      = []string{databaseLabelCMD, tableLabelCMd, defaultDatabaseCMD, defaultTableCMd, tlsCertificateCMD, tlsKeyCMD}
+	connectorCMDsWithUnmatchedCertificate = []string{databaseLabelCMD, tableLabelCMd, defaultDatabaseCMD, defaultTableCMd, tlsUnmatchedCertificateCMD, tlsKeyCMD}
+	connectorCMDsWithUnmatchedKey         = []string{databaseLabelCMD, tableLabelCMd, defaultDatabaseCMD, defaultTableCMd, tlsCertificateCMD, tlsInvalidKeyFileCMD}
+	connectorCMDsWithInvalidFile          = []string{databaseLabelCMD, tableLabelCMd, defaultDatabaseCMD, defaultTableCMd, tlsKeyCMD, tlsKeyCMD}
 	destinations                          = map[string][]string{database: {table}}
 )
 
@@ -107,6 +113,10 @@ func TestHttpsSupport(t *testing.T) {
 	count := getDatabaseRowCount(t, database, table)
 	assert.Greater(t, count, 0)
 
+	statusCode, err := sendReadRequest(t, fmt.Sprintf("prometheus_http_requests_total{%s=\"%s\", %s=\"%s\"}", databaseLabel, database, tableLabel, table))
+	require.NoError(t, err)
+	assert.Equal(t, expectedStatusCode, statusCode)
+
 	integration.StopContainer(t, dockerClient, ctx, containerIDs)
 }
 
@@ -152,12 +162,32 @@ func getAbsolutionPath(t *testing.T, path string) string {
 	return absPath
 }
 
+// sendReadRequest sends a read request to Amazon Timestream.
+func sendReadRequest(t *testing.T, query string) (int, error) {
+	httpClient := integration.CreateHTTPClient()
+
+	now := time.Now()
+	prevHour := now.Add(time.Duration(-1) * time.Hour)
+	req := integration.CreateReadRequest(t, query, now, prevHour)
+
+	resp, err := httpClient.Do(req)
+	for i := 0; i < retries; i++ {
+		resp, err = httpClient.Do(req)
+		if err == nil && resp != nil {
+			break
+		}
+		time.Sleep(10 * time.Second)
+	}
+	assert.NotNil(t, resp)
+	return resp.StatusCode, err
+}
+
 // connectorStatusCheck checks if the exit code of the Prometheus Connector response is as expected.
 func connectorStatusCheck(t *testing.T, dockerClient *client.Client, ctx context.Context, respID string, expectedExitCode int) {
 	var jsonRes types.ContainerJSON
 	var err error
 
-	for i := 0; i < 6; i++ {
+	for i := 0; i < retries; i++ {
 		// Busy wait for a minute to give the containers time to send the first request.
 		jsonRes, err = dockerClient.ContainerInspect(ctx, respID)
 		out, _ := dockerClient.ContainerLogs(ctx, respID, types.ContainerLogsOptions{ShowStdout: true})
