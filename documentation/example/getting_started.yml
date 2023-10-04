@@ -48,3 +48,10 @@ remote_write:
         regex: .*
         replacement: exampleTable
         target_label: PrometheusTableLabel
+
+remote_read:
+  - url: "http://localhost:9201/read"
+
+    basic_auth:
+      username: accessKey
+      password: secretAccessKey

@@ -199,14 +199,21 @@ It is recommended to enable TLS encryption between Prometheus and the Prometheus
            regex: .*
            replacement: exampleTable
            target_label: PrometheusTableLabel
+     
+   remote_read:
+     - url: "http://localhost:9201/read"
+   
+       # Replace the values for username and password with valid IAM user access key and IAM user secret access key.
+       basic_auth:
+         username: accessKey
+         password: secretAccessKey
    ```
    
    > **NOTE**: Each Prometheus request must be authorized. Since the Prometheus Connector does not support temporary security credentials, it is recommended to use regularly [rotate IAM user access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html#Using_RotateAccessKey).
    
    This configuration serves the following functions:
 
-   1. Configures Prometheus' remote storage destinations by setting the `url` options to the remote write endpoints, e.g. `"http://localhost:9201/write"`.
-
+   1. Configures Prometheus' remote storage destinations by setting the `url` options to the remote read and remote write endpoints, e.g. `"http://localhost:9201/write"`.
    2. Configures the Amazon Timestream ingestion destination for Prometheus time series by attaching a label indicating the destination database and another label indicating the destination table for all time series. **These labels are required to be present on all Prometheus time series sent to the Prometheus Connector.** If one of the labels cannot be found on any of the time series, the Prometheus Connector will log the error and halt the program. 
 
    For an example of a complete Prometheus YAML file, see [getting_started.yml](./documentation/example/getting_started.yml).
@@ -222,7 +229,7 @@ It is recommended to enable TLS encryption between Prometheus and the Prometheus
 
 It is recommended to secure the Prometheus requests with TLS encryption. This can be achieved by specifying the certificate authority file the `tls_config` section for Prometheus' remote read and remote write configuration. To generate self-signed certificates during development see the [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates) section.
 
-Here is an example of `remote_write` configuration with TLS, where `RootCA.pem` is within the same directory as the Prometheus configuration file:
+Here is an example of `remote_write` and `remote_read` configuration with TLS, where `RootCA.pem` is within the same directory as the Prometheus configuration file:
 
 ```yaml
 remote_write:
@@ -247,6 +254,18 @@ remote_write:
         regex: .*
         replacement: exampleTable
         target_label: PrometheusTableLabel
+
+remote_read:
+  - url: "https://localhost:9201/read"
+  
+  basic_auth:
+     # Replace the values for username and password with valid IAM user access key and IAM user secret access key.
+     username: accessKey
+     password: secretAccessKey
+  
+  tls_config:
+     # Ensure ca_file is a valid file path pointing to the CA certificate.
+     ca_file: RootCA.pem
 ```
 
 ## Verification
@@ -291,6 +310,31 @@ remote_write:
     ```
     
     This sample output indicates that 340 rows has been ingested.
+   
+4. To verify the Prometheus Connector can query date from Amazon Timestream, query with Prometheus Query Language (PromQL) in the `http://localhost:9090/` in a browser, which opens Prometheus' [expression browser](https://prometheus.io/docs/visualization/browser/#expression-browser). 
+   The PromQL must contain `database-label` and `table-label` as part of the label matchers to indicate which database and table contain the data. Here is a simple example:
+   
+   ```
+   prometheus_http_requests_total{PrometheusDatabaseLabel="exampleDatabase", PrometheusTableLabel="exampleTable"}
+   ```
+   `prometheus_http_requests_total` is a metric name. `PrometheusDatabaseLabel` and `PrometheusTableLabel` are the corresponding `database-label` and `table-label` in the Prometheus configuration.
+   This PromQL will return all the time series from the past hour with the metric name `prometheus_http_requests_total` in `exampleTable` of `exampleDatabase`.
+   Here is a query result example:
+   ![](documentation/example/query_example.PNG)
+   
+   PromQL also supports regex, here is an example:
+   ```
+   prometheus_http_requests_total{handler!="/api/v1/query", job=~"p*", code!~"2..", PrometheusDatabaseLabel="exampleDatabase", PrometheusTableLabel="exampleTable"}
+   ```
+   This example is querying for all rows from `exampleTable` of `exampleDatabase` where:
+  
+   - column `metric name` equals to `prometheus_http_requests_total`;
+   - column `handler` does not equal to `/api/v1/query`;
+   - column `job` matches the regex pattern `p*`;
+   - column `code` does not match the regex pattern `2..`.
+  
+   For more examples, see [Prometheus Query Examples](https://prometheus.io/docs/prometheus/latest/querying/examples/).
+   There are other ways to execute PromQLs, such as through Prometheus' [HTTP API](https://prometheus.io/docs/prometheus/latest/querying/api/), or through [Grafana](https://grafana.com/).
 
 ## Troubleshooting
 
@@ -298,7 +342,7 @@ remote_write:
     
     Error occurred when running the Linux binary with the following message:
     ```log
-    level=error ts=2020-11-21T00:22:06.203Z caller=utils.go:23 message="Unable to create a write client." error="NoCredentialProviders: no valid providers in chain. Deprecated.\n\tFor verbose messaging see aws.Config.CredentialsChainVerboseErrors"
+    level=error ts=2020-11-21T00:22:06.203Z caller=utils.go:23 message="Unable to create a query client." error="NoCredentialProviders: no valid providers in chain. Deprecated.\n\tFor verbose messaging see aws.Config.CredentialsChainVerboseErrors"
     ```
     This error may occur when no AWS credentials can be found. Follow the steps in [Configure AWS Credentials](#configure-aws-credentials) to set up the credentials.
 
@@ -306,7 +350,7 @@ remote_write:
     
     Error occurred when running the Linux binary with the following message:
     ```log
-    level=error ts=2020-11-23T19:58:49.998Z caller=utils.go:23 message="Unable to create a write client." error="AccessDeniedException: User: arn:aws:iam::0000000000:user/username is not authorized to perform: timestream:DescribeEndpoints with an explicit deny"
+    level=error ts=2020-11-23T19:58:49.998Z caller=utils.go:23 message="Unable to create a query client." error="AccessDeniedException: User: arn:aws:iam::0000000000:user/username is not authorized to perform: timestream:DescribeEndpoints with an explicit deny"
     ```
     1. Ensure the account running the Prometheus Connector has sufficient permissions to access Timestream. See all the IAM Policies for Timestream on [How Amazon Timestream Works with IAM](https://docs.aws.amazon.com/timestream/latest/developerguide/security_iam_service-with-iam.html).
     

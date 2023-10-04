@@ -4,7 +4,7 @@ This documentation outlines the steps required to package and publish the AWS Se
 There are two template available:
 1. [Simple template](simple-template.yml) &mdash; deploys the application with all resources created with pre-determined values.
 2. [Advanced template](advanced-template.yml) &mdash; provides parameters to configure the resources being created.
-Both templates deploy an AWS Lambda function and an Amazon API Gateway that listens for [Prometheus remote write](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations) requests and stores metrics to Amazon Timestream.
+Both templates deploy an AWS Lambda function and an Amazon API Gateway that listens for [Prometheus remote write/read](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations) requests and stores metrics to Amazon Timestream.
 
 ## Prerequisites
 

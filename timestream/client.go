@@ -12,18 +12,19 @@ and limitations under the License.
 */
 
 // This file does the following:
-// 1. converts the Prometheus write requests to Amazon Timestream records;
-// 2. sends the records to Amazon Timestream through the write clients;
+// 1. converts the Prometheus read requests and write requests to Amazon Timestream queries and records;
+// 2. sends the queries and records to Amazon Timestream through the read and write clients;
+// 3. converts the query results from Amazon Timestream to Prometheus read responses.
 package timestream
 
 import (
 	"fmt"
-	"os"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/timestreamquery"
+	"github.com/aws/aws-sdk-go/service/timestreamquery/timestreamqueryiface"
 	"github.com/aws/aws-sdk-go/service/timestreamwrite"
 	"github.com/aws/aws-sdk-go/service/timestreamwrite/timestreamwriteiface"
 	"github.com/go-kit/kit/log"
@@ -32,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 	"timestream-prometheus-connector/errors"
 )
@@ -40,22 +42,19 @@ type labelOperation string
 type longMetricsOperation func(measureValueName string) (labelOperation, error)
 
 // Store the initialization function calls to allow unit tests to mock the creation of real clients.
-var initWriteClient = func(config *aws.Config, endpoint string) (timestreamwriteiface.TimestreamWriteAPI, error) {
+var initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
 	sess, err := session.NewSession(config)
 	if err != nil {
 		return nil, err
 	}
-	tcfg := &aws.Config{}
-	if endpoint != "" {
-		tcfg.Endpoint = aws.String(endpoint)
+	return timestreamwrite.New(sess), nil
+}
+var initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
+	sess, err := session.NewSession(config)
+	if err != nil {
+		return nil, err
 	}
-	wclient := timestreamwrite.New(sess, tcfg)
-	// Add the user agent version
-	useragent := fmt.Sprintf("PrometheusTimestream/%s/%s", os.Getenv("AWS_LAMBDA_FUNCTION_NAME"), Version)
-	wclient.Handlers.Send.PushFront(func(r *request.Request) {
-		r.HTTPRequest.Header.Set("User-Agent", useragent)
-	})
-	return wclient, nil
+	return timestreamquery.New(sess), nil
 }
 
 // recordDestinationMap is a nested map that stores slices of Records based on the ingestion destination.
@@ -77,7 +76,22 @@ const (
 	ignored                     labelOperation = "Ignored"
 	failed                      labelOperation = "Failed"
 	unmodified                  labelOperation = "Unmodified"
+	timeColumnName              string         = "time"
+	measureValueColumnName      string         = "measure_value::double"
+	measureNameColumnName       string         = "measure_name"
+	timestampLayout             string         = "2006-01-02 15:04:05.000000000"
+	millisToSecConversionRate                  = int64(time.Second) / int64(time.Millisecond)
+	nanosToMillisConversionRate                = int64(time.Millisecond) / int64(time.Nanosecond)
 )
+
+type QueryClient struct {
+	client            *Client
+	config            *aws.Config
+	logger            log.Logger
+	readExecutionTime prometheus.Histogram
+	readRequests      prometheus.Counter
+	timestreamQuery   timestreamqueryiface.TimestreamQueryAPI
+}
 
 type WriteClient struct {
 	client                    *Client
@@ -90,34 +104,59 @@ type WriteClient struct {
 	timestreamWrite           timestreamwriteiface.TimestreamWriteAPI
 	failOnLongMetricLabelName bool
 	failOnInvalidSample       bool
-	endpoint                  string
 }
 
 type Client struct {
-	writeClient   *WriteClient
-	databaseLabel string
-	tableLabel    string
+	queryClient     *QueryClient
+	writeClient     *WriteClient
+	databaseLabel   string
+	tableLabel      string
+	defaultDataBase string
+	defaultTable    string
 }
 
 // NewBaseClient creates a Timestream Client object with the ingestion destination labels.
-func NewBaseClient(databaseLabel, tableLabel string) *Client {
+func NewBaseClient(databaseLabel, tableLabel, defaultDataBase, defaultTable string) *Client {
 	client := &Client{
-		databaseLabel: databaseLabel,
-		tableLabel:    tableLabel,
+		databaseLabel:   databaseLabel,
+		tableLabel:      tableLabel,
+		defaultDataBase: defaultDataBase,
+		defaultTable:    defaultTable,
 	}
 
 	return client
 }
 
+// NewQueryClient creates a new Timestream query client with the given set of configuration.
+func (c *Client) NewQueryClient(logger log.Logger, configs *aws.Config) {
+	c.queryClient = &QueryClient{
+		client: c,
+		logger: logger,
+		config: configs,
+		readRequests: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name: "timestream_connector_read_requests_total",
+				Help: "The total number of query requests to Timestream.",
+			},
+		),
+		readExecutionTime: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "timestream_connector_read_duration_seconds",
+				Help:    "The total execution time for the read requests.",
+				Buckets: prometheus.DefBuckets,
+			},
+		),
+	}
+}
+
 // NewWriteClient creates a new Timestream write client with a given set of configurations.
-func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool, endpoint string) {
+func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) {
 	c.writeClient = &WriteClient{
 		client:                    c,
 		logger:                    logger,
 		config:                    configs,
 		failOnLongMetricLabelName: failOnLongMetricLabelName,
 		failOnInvalidSample:       failOnInvalidSample,
-		endpoint:                  endpoint,
 		ignoredSamples: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Name: "timestream_connector_ignored_samples_total",
@@ -147,30 +186,23 @@ func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLo
 }
 
 // Write sends the prompb.WriteRequest to timestreamwriteiface.TimestreamWriteAPI
-func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.Credentials) ([3]int64, error) {
+func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.Credentials) error {
 	wc.config.Credentials = credentials
 	var err error
-	nilresp := [3]int64{0, 0, 0}
-	if wc.endpoint != "" {
-		LogInfo(wc.logger, "Ingest Endpoint: ", wc.endpoint)
-	}
-	wc.timestreamWrite, err = initWriteClient(wc.config, wc.endpoint)
+	wc.timestreamWrite, err = initWriteClient(wc.config)
 	if err != nil {
 		LogError(wc.logger, "Unable to construct a new session with the given credentials", err)
-		return nilresp, err
+		return err
 	}
 
 	recordMap := make(recordDestinationMap)
 	recordMap, err = wc.convertToRecords(req.Timeseries, recordMap)
 	if err != nil {
 		LogError(wc.logger, "Unable to convert the received Prometheus write request to Timestream Records.", err)
-		return nilresp, err
+		return err
 	}
 
 	var sdkErr error
-	var ctime int64
-	var recordlen int64
-	var numWrites int64
 	for database, tableMap := range recordMap {
 		for table, records := range tableMap {
 			writeRecordsInput := &timestreamwrite.WriteRecordsInput{
@@ -181,9 +213,6 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 			begin := time.Now()
 			_, err = wc.timestreamWrite.WriteRecords(writeRecordsInput)
 			duration := time.Since(begin).Seconds()
-			ctime += int64(time.Since(begin))
-			recordlen += int64(len(records))
-			numWrites += int64(1)
 			if err != nil {
 				sdkErr = wc.handleSDKErr(req, err, sdkErr)
 			}
@@ -192,8 +221,63 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 		}
 	}
 
-	resp := [3]int64{ctime, recordlen, numWrites}
-	return resp, sdkErr
+	return sdkErr
+}
+
+// Read converts the Prometheus prompb.ReadRequest into Timestream queries and return
+// the result set as Prometheus prompb.ReadResponse.
+func (qc *QueryClient) Read(req *prompb.ReadRequest, credentials *credentials.Credentials) (*prompb.ReadResponse, error) {
+	qc.config.Credentials = credentials
+	var err error
+	qc.timestreamQuery, err = initQueryClient(qc.config)
+	if err != nil {
+		LogError(qc.logger, "Unable to construct a new session with the given credentials", err)
+		return nil, err
+	}
+
+	queryInputs, isRelatedToRegex, err := qc.buildCommands(req.Queries)
+	if err != nil {
+		LogError(qc.logger, "Error occurred while translating Prometheus query.", err)
+		return nil, err
+	}
+
+	results := []*prompb.QueryResult{{}}
+	resultSet := results[0]
+
+	begin := time.Now()
+	var queryPageError error
+	for _, queryInput := range queryInputs {
+		queryPageError = qc.timestreamQuery.QueryPages(queryInput,
+			func(page *timestreamquery.QueryOutput, lastPage bool) bool {
+				var convertError error
+				resultSet, convertError = qc.convertToResult(resultSet, page)
+				qc.readRequests.Inc()
+				if convertError != nil {
+					LogError(qc.logger, "Error occurred while converting the Timestream query results to Prometheus QueryResults", err)
+					return false
+				}
+				return true
+			})
+		if queryPageError != nil {
+			if requestError, ok := queryPageError.(awserr.RequestFailure); ok && (requestError.StatusCode()/100 == 4) {
+				LogDebug(qc.logger, "The read request failed while retrieving data back from Timestream.", "request", req)
+			}
+
+			if _, ok := queryPageError.(*timestreamquery.ValidationException); ok && isRelatedToRegex {
+				LogError(qc.logger, "Error occurred due to unsupported query. Please validate the regular expression used in the query. Check the documentation for unsupported RE2 syntax.", queryPageError)
+				return nil, queryPageError
+			}
+
+			LogError(qc.logger, "Error occurred while querying Timestream pages.", err)
+			return nil, queryPageError
+		}
+	}
+	duration := time.Since(begin).Seconds()
+	qc.readExecutionTime.Observe(duration)
+
+	return &prompb.ReadResponse{
+		Results: results,
+	}, nil
 }
 
 // handleSDKErr parses and logs the error from SDK (if any)
@@ -245,30 +329,41 @@ func (wc *WriteClient) convertToRecords(series []*prompb.TimeSeries, recordMap r
 
 // processTimeSeries processes a slice of *prompb.TimeSeries to a slice of *timestreamwrite.Record
 func processTimeSeries(wc *WriteClient, operationOnLongMetrics longMetricsOperation, series []*prompb.TimeSeries, recordMap recordDestinationMap) (recordDestinationMap, error) {
-	var numRecords int
 	for _, timeSeries := range series {
 		var dimensions []*timestreamwrite.Dimension
 		var err error
 		var operation labelOperation
+		var databaseName string
+		var tableName string
 		wc.receivedSamples.Add(float64(len(timeSeries.Samples)))
 
 		metricLabels, measureValueName := convertToMap(timeSeries.Labels)
 
-		databaseName := metricLabels[wc.client.databaseLabel]
-		tableName := metricLabels[wc.client.tableLabel]
+		if len(wc.client.databaseLabel) == 0 || len(wc.client.tableLabel) == 0 {
+			databaseName = wc.client.defaultDataBase
+			tableName = wc.client.defaultTable
+		} else {
+			databaseName = metricLabels[wc.client.databaseLabel]
+			tableName = metricLabels[wc.client.tableLabel]
 
-		if len(databaseName) == 0 {
-			err = errors.NewMissingDatabaseWithWriteError(wc.client.databaseLabel, timeSeries)
-			return nil, err
+			if len(databaseName) == 0 && len(wc.client.defaultDataBase) == 0 {
+				err = errors.NewMissingDatabaseWithWriteError(wc.client.databaseLabel, timeSeries)
+				return nil, err
+			} else if len(databaseName) == 0 {
+				databaseName = wc.client.defaultDataBase
+			} else {
+				delete(metricLabels, wc.client.databaseLabel)
+			}
+
+			if len(tableName) == 0 && len(wc.client.defaultTable) == 0 {
+				err = errors.NewMissingTableWithWriteError(wc.client.tableLabel, timeSeries)
+				return nil, err
+			} else if len(tableName) == 0 {
+				tableName = wc.client.defaultTable
+			} else {
+				delete(metricLabels, wc.client.tableLabel)
+			}
 		}
-
-		if len(tableName) == 0 {
-			err = errors.NewMissingTableWithWriteError(wc.client.tableLabel, timeSeries)
-			return nil, err
-		}
-
-		delete(metricLabels, wc.client.databaseLabel)
-		delete(metricLabels, wc.client.tableLabel)
 
 		operation, err = operationOnLongMetrics(measureValueName)
 		switch operation {
@@ -306,11 +401,9 @@ func processTimeSeries(wc *WriteClient, operationOnLongMetrics longMetricsOperat
 			continue
 		}
 
-		numRecords += 1
 		recordMap[databaseName][tableName] = records
 
 	}
-	LogInfo(wc.logger, "Number of records: ", numRecords)
 	return recordMap, nil
 }
 
@@ -411,9 +504,192 @@ func (wc *WriteClient) appendRecords(records []*timestreamwrite.Record, timeSeri
 	return records, nil
 }
 
+// buildCommands builds a list of queries from the given Prometheus queries.
+func (qc *QueryClient) buildCommands(queries []*prompb.Query) ([]*timestreamquery.QueryInput, bool, error) {
+	var timestreamQueries []*timestreamquery.QueryInput
+	var isRelatedToRegex = false
+	for _, query := range queries {
+		var tableName string
+		var databaseName string
+		var matcherName string
+		var matchers []string
+		for _, matcher := range query.Matchers {
+			switch matcher.Name {
+			case qc.client.tableLabel:
+				tableName = matcher.Value
+				continue
+			case qc.client.databaseLabel:
+				databaseName = matcher.Value
+				continue
+			case model.MetricNameLabel:
+				matcherName = measureNameColumnName
+			default:
+				matcherName = matcher.Name
+			}
+
+			switch matcher.Type {
+			case prompb.LabelMatcher_EQ:
+				matchers = append(matchers, fmt.Sprintf("%s = '%s'", matcherName, matcher.Value))
+			case prompb.LabelMatcher_NEQ:
+				matchers = append(matchers, fmt.Sprintf("%s != '%s'", matcherName, matcher.Value))
+			case prompb.LabelMatcher_RE:
+				matchers = append(matchers, fmt.Sprintf("REGEXP_LIKE(%s, '%s')", matcherName, matcher.Value))
+				isRelatedToRegex = true
+			case prompb.LabelMatcher_NRE:
+				matchers = append(matchers, fmt.Sprintf("NOT REGEXP_LIKE(%s, '%s')", matcherName, matcher.Value))
+				isRelatedToRegex = true
+			default:
+				err := errors.NewUnknownMatcherError()
+				LogError(qc.logger, "Invalid query with unknown matcher.", err)
+				return nil, isRelatedToRegex, err
+			}
+		}
+
+		if len(databaseName) == 0 && len(qc.client.defaultDataBase) == 0 {
+			err := errors.NewMissingDatabaseWithQueryError(qc.client.databaseLabel)
+			LogError(qc.logger, "The database name must be provided in the PromQL's label matchers, where the label name must match the value specified through --database-label flag.", err)
+			return nil, isRelatedToRegex, err
+		} else if len(databaseName) == 0 {
+			databaseName = qc.client.defaultDataBase
+		}
+
+		if len(tableName) == 0 && len(qc.client.defaultTable) == 0 {
+			err := errors.NewMissingTableWithQueryError(qc.client.tableLabel)
+			LogError(qc.logger, "The table name must be provided in the PromQL's label matchers, where the label name must match the value specified through --database-label flag.", err)
+			return nil, isRelatedToRegex, err
+		} else if len(tableName) == 0 {
+			tableName = qc.client.defaultTable
+		}
+
+		matchers = append(matchers, fmt.Sprintf("%s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)", timeColumnName, query.StartTimestampMs/millisToSecConversionRate, query.EndTimestampMs/millisToSecConversionRate))
+
+		timestreamQueries = append(timestreamQueries, &timestreamquery.QueryInput{
+			QueryString: aws.String(fmt.Sprintf("SELECT * FROM %s.%s WHERE %v", databaseName, tableName, strings.Join(matchers, " AND "))),
+		})
+	}
+
+	return timestreamQueries, isRelatedToRegex, nil
+}
+
+// convertToResult converts the Timestream QueryOutput to Prometheus QueryResult.
+func (qc *QueryClient) convertToResult(results *prompb.QueryResult, page *timestreamquery.QueryOutput) (*prompb.QueryResult, error) {
+	var timeSeries []*prompb.TimeSeries
+	rows := page.Rows
+
+	if len(rows) == 0 {
+		LogInfo(qc.logger, "No results returned for the PromQL.")
+		return results, nil
+	}
+
+	for _, row := range rows {
+		labels, samples, err := qc.constructLabels(row.Data, page.ColumnInfo)
+		if err != nil {
+			LogDebug(qc.logger, "Error occurred when constructing Prometheus Labels from Timestream QueryOutput with Row", "row", row)
+			return results, err
+		}
+		timeSeries = constructTimeSeries(labels, samples, timeSeries)
+	}
+
+	results.Timeseries = append(results.Timeseries, timeSeries...)
+	return results, nil
+}
+
+// constructLabels converts the given row to the corresponding Prometheus Label and Sample.
+func (qc *QueryClient) constructLabels(row []*timestreamquery.Datum, metadata []*timestreamquery.ColumnInfo) ([]*prompb.Label, prompb.Sample, error) {
+	var labels []*prompb.Label
+	var sample prompb.Sample
+	for i, datum := range row {
+		if datum.NullValue == nil {
+			column := metadata[i]
+			switch *column.Name {
+			case timeColumnName:
+				timestamp, err := time.Parse(timestampLayout, *datum.ScalarValue)
+				if err != nil {
+					err := fmt.Errorf("error occured while parsing '%d' as a timestamp", datum.ScalarValue)
+					LogError(qc.logger, "Invalid datum type retrieved from Timestream", err)
+					return labels, sample, err
+				}
+				sample.Timestamp = timestamp.UnixNano() / nanosToMillisConversionRate
+			case measureValueColumnName:
+				val, err := strconv.ParseFloat(*datum.ScalarValue, 64)
+				if err != nil {
+					err := fmt.Errorf("error occured while parsing '%d' as a float", datum.ScalarValue)
+					LogError(qc.logger, "Invalid datum type retrieved from Timestream", err)
+					return labels, sample, err
+				}
+				sample.Value = val
+			case measureNameColumnName:
+				labels = append(labels, &prompb.Label{
+					Name:  model.MetricNameLabel,
+					Value: *datum.ScalarValue,
+				})
+			default:
+				labels = append(labels, &prompb.Label{
+					Name:  *column.Name,
+					Value: *datum.ScalarValue,
+				})
+			}
+		}
+	}
+	return labels, sample, nil
+}
+
+// constructTimeSeries constructs a TimeSeries in the query result.
+func constructTimeSeries(labels []*prompb.Label, sample prompb.Sample, currentTimeSeries []*prompb.TimeSeries) []*prompb.TimeSeries {
+	// anyMatch records if the label match one of the labels in current TimeSeries.
+	anyMatch := false
+	for _, timeSeries := range currentTimeSeries {
+		if compareLabels(timeSeries.GetLabels(), labels) {
+			timeSeries.Samples = append(timeSeries.GetSamples(), sample)
+			anyMatch = true
+			break
+		}
+	}
+
+	if !anyMatch {
+		currentTimeSeries = addNewTimeSeries(currentTimeSeries, labels, sample)
+	}
+
+	return currentTimeSeries
+}
+
+// addNewTimeSeries adds a new TimeSeries to the current slice of TimeSeries.
+func addNewTimeSeries(currentTimeSeries []*prompb.TimeSeries, labels []*prompb.Label, sample prompb.Sample) []*prompb.TimeSeries {
+	currentTimeSeries = append(
+		currentTimeSeries,
+		&prompb.TimeSeries{
+			Labels:  labels,
+			Samples: []prompb.Sample{sample},
+		})
+	return currentTimeSeries
+}
+
+// compareLabels compares two slices of labels with each label name and value. If they are equal, return true. Otherwise, return false.
+func compareLabels(labels1 []*prompb.Label, labels2 []*prompb.Label) bool {
+	if len(labels1) != len(labels2) {
+		return false
+	}
+	for i, label := range labels1 {
+		if label.Name != labels2[i].Name || label.Value != labels2[i].Value {
+			return false
+		}
+	}
+	return true
+}
+
+// Name gets the name of the query client.
+func (qc QueryClient) Name() string {
+	return "Timestream query client"
+}
+
 // Name gets the name of the write client.
 func (wc WriteClient) Name() string {
 	return "Timestream write client"
+}
+
+// QueryClient gets the query client.
+func (c *Client) QueryClient() *QueryClient {
+	return c.queryClient
 }
 
 // WriteClient gets the write client.
@@ -427,6 +703,8 @@ func (c *Client) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.writeClient.receivedSamples.Desc()
 	ch <- c.writeClient.writeExecutionTime.Desc()
 	ch <- c.writeClient.writeRequests.Desc()
+	ch <- c.queryClient.readRequests.Desc()
+	ch <- c.queryClient.readExecutionTime.Desc()
 }
 
 // Collect implements prometheus.Collector.
@@ -435,4 +713,6 @@ func (c *Client) Collect(ch chan<- prometheus.Metric) {
 	ch <- c.writeClient.receivedSamples
 	ch <- c.writeClient.writeExecutionTime
 	ch <- c.writeClient.writeRequests
+	ch <- c.queryClient.readRequests
+	ch <- c.queryClient.readExecutionTime
 }
