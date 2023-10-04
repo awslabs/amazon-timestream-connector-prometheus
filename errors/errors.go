@@ -91,6 +91,19 @@ func NewParseSampleOptionError(failOnInvalidSample string) error {
 	}}
 }
 
+type ParseRetriesError struct {
+	baseConnectorError
+}
+
+func NewParseRetriesError(retries string) error {
+	return &ParseRetriesError{baseConnectorError: baseConnectorError{
+		statusCode: http.StatusBadRequest,
+		errorMsg:   fmt.Sprintf("error occurred while parsing max-retries, expected an integer, but received '%s'", retries),
+		message: "The value specified in the max-retries option is not one of the accepted values. " +
+			acceptedValueErrorMessage,
+	}}
+}
+
 type ParseBasicAuthHeaderError struct {
 	baseConnectorError
 }
@@ -108,11 +121,11 @@ type MissingHeaderError struct {
 	baseConnectorError
 }
 
-func NewMissingHeaderError(writeHeader string) error {
+func NewMissingHeaderError(readHeader, writeHeader string) error {
 	return &MissingHeaderError{baseConnectorError: baseConnectorError{
 		statusCode: http.StatusBadRequest,
-		errorMsg:   fmt.Sprintf("No appropriate header found in the request. Please ensure the request header contains %s.", writeHeader),
-		message:    fmt.Sprintf("The request must contain %s in the header.", writeHeader),
+		errorMsg:   fmt.Sprintf("No appropriate header found in the request. Please ensure the request header contains either %s or %s.", readHeader, writeHeader),
+		message:    fmt.Sprintf("The request must contains either %s or %s in the header.", readHeader, writeHeader),
 	}}
 }
 
@@ -142,6 +155,47 @@ func NewMissingTableWithWriteError(tableLabel string, timeSeries *prompb.TimeSer
 			labelErrorMessage,
 	}
 	return &MissingTableWithWriteError{baseConnectorError: base}
+}
+
+type MissingDatabaseWithQueryError struct {
+	baseConnectorError
+}
+
+func NewMissingDatabaseWithQueryError(databaseLabel string) error {
+	base := baseConnectorError{
+		statusCode: http.StatusBadRequest,
+		errorMsg:   fmt.Sprintf("no Timestream database is specified in the query, please provide the database in the PromQL as a label matcher {%s=\"<databaseName>\"}", databaseLabel),
+		message: "The environment variables database-label must be specified in the PromQL when sending a query request. " +
+			labelErrorMessage,
+	}
+	return &MissingDatabaseWithQueryError{baseConnectorError: base}
+}
+
+type MissingTableWithQueryError struct {
+	baseConnectorError
+}
+
+func NewMissingTableWithQueryError(tableLabel string) error {
+	base := baseConnectorError{
+		statusCode: http.StatusBadRequest,
+		errorMsg:   fmt.Sprintf("no Timestream table is specified in the query, please provide the table in the PromQL as a label matcher {%s=\"<tableName>\"}", tableLabel),
+		message: "The environment variables table-label must be specified when sending a query request. " +
+			labelErrorMessage,
+	}
+	return &MissingTableWithQueryError{baseConnectorError: base}
+}
+
+type UnknownMatcherError struct {
+	baseConnectorError
+}
+
+func NewUnknownMatcherError() error {
+	base := baseConnectorError{
+		statusCode: http.StatusBadRequest,
+		errorMsg:   "unknown matcher in query, Prometheus only supports 4 types of matchers in the filter: =, !=, =~, !~",
+		message:    "Prometheus only supports 4 types of matchers in the filter: =, !=, =~, !~, others matchers will be invalid. ",
+	}
+	return &UnknownMatcherError{baseConnectorError: base}
 }
 
 type LongLabelNameError struct {

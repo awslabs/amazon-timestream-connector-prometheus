@@ -50,3 +50,10 @@ remote_write:
         regex: promhttp_.*
         replacement: prometheus
         target_label: PrometheusDatabaseLabel
+      
+remote_read:
+  - url: "http://localhost:9201/read"
+
+    basic_auth:
+      username: accessKey
+      password: secretAccessKey
