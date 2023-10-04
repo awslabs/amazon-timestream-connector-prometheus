@@ -12,7 +12,7 @@ require (
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/go-kit/kit v0.10.0
 	github.com/gogo/protobuf v1.3.2
-	github.com/golang/snappy v0.0.2
+	github.com/golang/snappy v0.0.3
 	github.com/google/go-cmp v0.5.2
 	github.com/grpc-ecosystem/grpc-gateway v1.15.0 // indirect
 	github.com/kr/text v0.2.0 // indirect

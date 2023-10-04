@@ -15,6 +15,11 @@ and limitations under the License.
 // to easily reference them when retrieving and parsing the options from the command line or environment variables.
 package main
 
+import (
+	awsClient "github.com/aws/aws-sdk-go/aws/client"
+	"strconv"
+)
+
 type configuration struct {
 	flag         string
 	envFlag      string
@@ -24,6 +29,9 @@ type configuration struct {
 var (
 	enableLogConfig           = &configuration{flag: "enable-logging", envFlag: "enable_logging", defaultValue: "true"}
 	regionConfig              = &configuration{flag: "region", envFlag: "region", defaultValue: "us-east-1"}
+	maxRetriesConfig          = &configuration{flag: "max-retries", envFlag: "max_retries", defaultValue: strconv.Itoa(awsClient.DefaultRetryerMaxNumRetries)}
+	defaultDatabaseConfig     = &configuration{flag: "default-database", envFlag: "default_database", defaultValue: ""}
+	defaultTableConfig        = &configuration{flag: "default-table", envFlag: "default_table", defaultValue: ""}
 	databaseLabelConfig       = &configuration{flag: "database-label", envFlag: "database_label", defaultValue: ""}
 	tableLabelConfig          = &configuration{flag: "table-label", envFlag: "table_label", defaultValue: ""}
 	listenAddrConfig          = &configuration{flag: "web.listen-address", envFlag: "", defaultValue: ":9201"}
@@ -34,5 +42,4 @@ var (
 	promlogFormatConfig       = &configuration{flag: "log.format", envFlag: "log_format", defaultValue: "logfmt"}
 	certificateConfig         = &configuration{flag: "tls-certificate", envFlag: "", defaultValue: ""}
 	keyConfig                 = &configuration{flag: "tls-key", envFlag: "", defaultValue: ""}
-	ingestEndpointConfig      = &configuration{flag: "ingest-endpoint", envFlag: "ingest_endpoint", defaultValue: ""}
 )
