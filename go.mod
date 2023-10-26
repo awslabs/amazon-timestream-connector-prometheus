@@ -20,7 +20,7 @@ require (
 	github.com/prometheus/procfs v0.2.0 // indirect
 	github.com/prometheus/prometheus v2.5.0+incompatible
 	github.com/stretchr/testify v1.8.3
-	golang.org/x/net v0.9.0
+	golang.org/x/net v0.17.0
 	google.golang.org/grpc v1.56.3 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 )
