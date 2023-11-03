@@ -50,7 +50,7 @@ type ConnectorContainerConfig struct {
 // CreateDockerClient creates a Docker client that runs in the background.
 func CreateDockerClient(t *testing.T) (*client.Client, context.Context) {
 	ctx := context.Background()
-	cli, err := client.NewEnvClient()
+	cli, err := client.NewClientWithOpts()
 	require.NoError(t, err)
 
 	return cli, ctx
