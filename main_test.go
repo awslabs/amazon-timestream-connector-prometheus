@@ -23,7 +23,7 @@ import (
 	"github.com/aws/aws-sdk-go/private/protocol"
 	"github.com/aws/aws-sdk-go/service/timestreamquery"
 	"github.com/aws/aws-sdk-go/service/timestreamwrite"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/google/go-cmp/cmp"

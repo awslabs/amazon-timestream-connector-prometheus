@@ -15,8 +15,8 @@ and limitations under the License.
 package timestream
 
 import (
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 )
 
 // LogError logs the provided error with the given message.

@@ -50,7 +50,7 @@ type ConnectorContainerConfig struct {
 // CreateDockerClient creates a Docker client that runs in the background.
 func CreateDockerClient(t *testing.T) (*client.Client, context.Context) {
 	ctx := context.Background()
-	cli, err := client.NewEnvClient()
+	cli, err := client.NewClientWithOpts()
 	require.NoError(t, err)
 
 	return cli, ctx
@@ -77,7 +77,7 @@ func StartPrometheus(t *testing.T, cli *client.Client, ctx context.Context, conf
 			},
 		},
 		Binds: config.Binds,
-	}, nil, "")
+	}, nil, nil, "")
 
 	require.NoError(t, err)
 	assert.Nil(t, cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}))
@@ -112,7 +112,7 @@ func StartConnector(t *testing.T, cli *client.Client, ctx context.Context, confi
 	resp, err := cli.ContainerCreate(ctx, &container.Config{
 		Image: config.ImageName,
 		Cmd:   config.ConnectorCommands,
-	}, hostConfig, nil, "")
+	}, hostConfig, nil, nil, "")
 	require.NoError(t, err)
 	require.NoError(t, cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}))
 
@@ -122,7 +122,7 @@ func StartConnector(t *testing.T, cli *client.Client, ctx context.Context, confi
 // StopContainer stops and removes all containers matching the given slice of containerIDs.
 func StopContainer(t *testing.T, cli *client.Client, ctx context.Context, containerIDs []string) {
 	for i := range containerIDs {
-		assert.Nil(t, cli.ContainerStop(ctx, containerIDs[i], nil))
+		assert.Nil(t, cli.ContainerStop(ctx, containerIDs[i], container.StopOptions{}))
 		assert.Nil(t, cli.ContainerRemove(ctx, containerIDs[i], types.ContainerRemoveOptions{RemoveVolumes: true, Force: true}))
 	}
 }
