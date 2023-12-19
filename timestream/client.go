@@ -569,7 +569,11 @@ func (qc *QueryClient) buildCommands(queries []*prompb.Query) ([]*timestreamquer
 			tableName = qc.client.defaultTable
 		}
 
-		matchers = append(matchers, fmt.Sprintf("%s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)", timeColumnName, query.StartTimestampMs/millisToSecConversionRate, query.EndTimestampMs/millisToSecConversionRate))
+		if query.GetHints() != nil {
+			matchers = append(matchers, fmt.Sprintf("%s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)", timeColumnName, query.GetHints().StartMs/millisToSecConversionRate, query.GetHints().EndMs/millisToSecConversionRate))
+		} else {
+			matchers = append(matchers, fmt.Sprintf("%s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)", timeColumnName, query.StartTimestampMs/millisToSecConversionRate, query.EndTimestampMs/millisToSecConversionRate))
+		}
 
 		timestreamQueries = append(timestreamQueries, &timestreamquery.QueryInput{
 			QueryString: aws.String(fmt.Sprintf("SELECT * FROM %s.%s WHERE %v", databaseName, tableName, strings.Join(matchers, " AND "))),
