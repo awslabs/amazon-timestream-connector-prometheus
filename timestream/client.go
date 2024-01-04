@@ -22,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+    "github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/timestreamquery"
 	"github.com/aws/aws-sdk-go/service/timestreamquery/timestreamqueryiface"
@@ -41,12 +42,18 @@ import (
 type labelOperation string
 type longMetricsOperation func(measureValueName string) (labelOperation, error)
 
+var addUserAgent = request.NamedHandler {
+    Name: "UserAgentHandler",
+    Fn: request.MakeAddToUserAgentHandler("Prometheus Connector", Version),
+}
+
 // Store the initialization function calls to allow unit tests to mock the creation of real clients.
 var initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
 	sess, err := session.NewSession(config)
 	if err != nil {
 		return nil, err
 	}
+    sess.Handlers.Build.PushFrontNamed(addUserAgent)
 	return timestreamwrite.New(sess), nil
 }
 var initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
@@ -54,6 +61,7 @@ var initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQ
 	if err != nil {
 		return nil, err
 	}
+    sess.Handlers.Build.PushFrontNamed(addUserAgent)
 	return timestreamquery.New(sess), nil
 }
 
