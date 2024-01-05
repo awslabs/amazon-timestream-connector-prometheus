@@ -768,6 +768,14 @@ remote_read:
 The Prometheus Connector will use the default credentials provider implemented in the AWS SDK for Go instead of allowing users 
 to provide the credentials through command-line flags. This prevents sensitive data from being easily scraped.
 
+## User-Agent Header
+
+The Prometheus Connector uses the following `User-Agent` header for all requests:
+
+```
+User-Agent: Prometheus Connector/<version> aws-sdk-go/<version> (go<version>; <os>; <cpu arch>)
+```
+
 # Developer Documentation
 
 ## Building the Prometheus Connector from Source
