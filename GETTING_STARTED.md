@@ -43,31 +43,28 @@ This getting started guide defines the following terms:
 
 ### Create a database and table on Amazon Timestream
 
-1. Create a database called `exampleDatabase` by running the following command in a command-line interface:
+1. Create a database called `prometheusDatabase` by running the following command in a command-line interface:
 
    ```shell
-   aws timestream-write create-database --database-name exampleDatabase
+   aws timestream-write create-database --database-name prometheusDatabase
    ```
 
-2. Create a table called `exampleTable` within `exampleDatabase` with the following command:
+2. Create a table called `prometheusMetricsTable` within `prometheusDatabase` with the following command:
 
    ```shell
-   aws timestream-write create-table --database-name exampleDatabase --table-name exampleTable
+   aws timestream-write create-table --database-name prometheusDatabase --table-name prometheusMetricsTable
    ```
 
 3. Run the following `describe-table` command to ensure that the database and table creation succeeded:
 
    ```shell
-   aws timestream-write describe-table --database-name exampleDatabase --table-name exampleTable
+   aws timestream-write describe-table --database-name prometheusDatabase --table-name prometheusMetricsTable
    ```
 
 ## Configure Prometheus Connector
 
-Users can run the Prometheus Connector with precompiled Linux binary or Docker image. For both methods, the Prometheus Connector must have the `database-label` and `table-label` configured.
-The `database-label` and `table-label` options specify the ingestion and query destination for all Prometheus metrics. The values of these options correspond to the Prometheus label names and not the Amazon Timestream databases and tables. 
-For more information, see [Multi-destination Configuration](README.md#multi-destination-configuration).
-
-### Linux Binary
+Users can run the Prometheus Connector with precompiled Linux binary or Docker image. For both methods, the Prometheus Connector must have the `default-database` and `default-table` configured.
+The `default-database` and `default-table` options specify the ingestion and query destination for all Prometheus metrics.
 
 1. Download the tarball containing the precompiled binary for Linux named `timestream-prometheus-connector-linux-amd64-1.1.0.tar.gz`.
 2. Extract the tarball and navigate to the extracted folder by running the following commands in a terminal:
@@ -75,14 +72,14 @@ For more information, see [Multi-destination Configuration](README.md#multi-dest
     tar xvfz timestream-prometheus-connector-*.tar.gz
     cd linux
     ```
-3. Run the binary with required arguments `database-label` and `table-label`.
+3. Run the binary with required arguments `default-database` and `default-table`.
     ```shell script
-    ./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel
+    ./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable
     ```
 
    It is recommended to enable TLS encryption between Prometheus and the Prometheus Connector. To enable TLS encryption, use the following command to run the binary instead:
    ```shell
-   ./timestream-prometheus-connector-linux-amd64-1.1.0 --database-label=PrometheusDatabaseLabel  --table-label=PrometheusTableLabel --tls-certificate=serverCertificate.crt --tls-key=serverPrivateKey.key
+   ./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=prometheusDatabase   --default-table=prometheusMetricsTable --tls-certificate=serverCertificate.crt --tls-key=serverPrivateKey.key
    ```
    This command assumes the TLS server certificate and the server secret key are stored in the same directory as the Prometheus Connector. 
    If the files are in a different location, specify the path to the files instead.
@@ -112,21 +109,21 @@ Follow the instructions for the corresponding platform to download and install D
     docker run \
     -p 9201:9201 \
     timestream-prometheus-connector-docker \
-    --database-label=PrometheusDatabaseLabel \
-    --table-label=PrometheusTableLabel 
+    --default-database=prometheusDatabase \
+    --default-table=prometheusMetricsTable 
     ```
 * **Windows** &mdash; Run the Docker image with the following command:
     ```shell script
     docker run ^
     -p 9201:9201 ^
     timestream-prometheus-connector-docker ^
-    --database-label=PrometheusDatabaseLabel ^
-    --table-label=PrometheusTableLabel 
+    --default-database=prometheusDatabase ^
+    --default-table=prometheusMetricsTable 
     ```
   
 The command does the following:
 1. Publish port 9201 in the Docker container to port 9201 in the Docker host. This allows services outside of the Docker container to access the connector running on port 9201 in the Docker container.
-2. Run the docker image named `timestream-prometheus-connector-docker` with required configuration options `database-label` and `table-label`.
+2. Run the docker image named `timestream-prometheus-connector-docker` with required configuration options `default-database` and `default-table`.
 
 It is recommended to enable TLS encryption between Prometheus and the Prometheus Connector. To enable TLS encryption, use the following command to run the Docker image:
 
@@ -137,8 +134,8 @@ It is recommended to enable TLS encryption between Prometheus and the Prometheus
      -v $HOME/tls:/root/tls:ro \
      -p 9201:9201 \
      timestream-prometheus-connector-docker \
-     --database-label=PrometheusDatabaseLabel \
-     --table-label=PrometheusTableLabel \
+     --default-database=prometheusDatabase \
+     --default-table=prometheusMetricsTable \
      --tls-certificate=/root/tls/serverCertificate.crt \
      --tls-key=/root/tls/serverPrivateKey.key
      ```
@@ -150,8 +147,8 @@ It is recommended to enable TLS encryption between Prometheus and the Prometheus
      -v "%USERPROFILE%/tls:/root/tls/:ro" ^
      -p 9201:9201 ^
      timestream-prometheus-connector-docker ^
-     --database-label=PrometheusDatabaseLabel ^
-     --table-label=PrometheusTableLabel ^
+     --default-database=prometheusDatabase ^
+     --default-table=prometheusMetricsTable ^
      --tls-certificate=/root/tls/serverCertificate.crt ^
      --tls-key=/root/tls/serverPrivateKey.key
      ```
@@ -188,17 +185,6 @@ It is recommended to enable TLS encryption between Prometheus and the Prometheus
        basic_auth:
          username: accessKey
          password: secretAccessKey
-   
-       write_relabel_configs:
-         # Configure ingestion destination.
-         - source_labels: ["__name__"]
-           regex: .*
-           replacement: exampleDatabase
-           target_label: PrometheusDatabaseLabel
-         - source_labels: ["__name__"]
-           regex: .*
-           replacement: exampleTable
-           target_label: PrometheusTableLabel
      
    remote_read:
      - url: "http://localhost:9201/read"
@@ -243,17 +229,6 @@ remote_write:
       # Replace the values for username and password with valid IAM user access key and IAM user secret access key.
       username: accessKey
       password: secretAccessKey
-  
-   write_relabel_configs:
-      # Configure ingestion destination.
-      - source_labels: ["__name__"]
-        regex: .*
-        replacement: exampleDatabase
-        target_label: PrometheusDatabaseLabel
-      - source_labels: ["__name__"]
-        regex: .*
-        replacement: exampleTable
-        target_label: PrometheusTableLabel
 
 remote_read:
   - url: "https://localhost:9201/read"
@@ -281,7 +256,7 @@ remote_read:
 3. To verify the Prometheus Connector is ingesting data, use the AWS CLI to execute the following query:
 
     ```shell
-    aws timestream-query query --query-string "SELECT count() FROM exampleDatabase.exampleTable"
+    aws timestream-query query --query-string "SELECT count() FROM prometheusDatabase.prometheusMetricsTable"
     ```
     
     The output should look similar to the following:
@@ -312,21 +287,21 @@ remote_read:
     This sample output indicates that 340 rows has been ingested.
    
 4. To verify the Prometheus Connector can query date from Amazon Timestream, query with Prometheus Query Language (PromQL) in the `http://localhost:9090/` in a browser, which opens Prometheus' [expression browser](https://prometheus.io/docs/visualization/browser/#expression-browser). 
-   The PromQL must contain `database-label` and `table-label` as part of the label matchers to indicate which database and table contain the data. Here is a simple example:
+   The PromQL will query the values for `default-databse` and `default-table` as which database and table that contain the data. Here is a simple example:
    
    ```
-   prometheus_http_requests_total{PrometheusDatabaseLabel="exampleDatabase", PrometheusTableLabel="exampleTable"}
+   prometheus_http_requests_total{}
    ```
-   `prometheus_http_requests_total` is a metric name. `PrometheusDatabaseLabel` and `PrometheusTableLabel` are the corresponding `database-label` and `table-label` in the Prometheus configuration.
-   This PromQL will return all the time series from the past hour with the metric name `prometheus_http_requests_total` in `exampleTable` of `exampleDatabase`.
+   `prometheus_http_requests_total` is a metric name. The database and table being queried are the corresponding `default-database` and `default-table` configured for the Prometheus connector.
+   This PromQL will return all the time series from the past hour with the metric name `prometheus_http_requests_total` in `default-table` of `default-database`.
    Here is a query result example:
    ![](documentation/example/query_example.PNG)
    
    PromQL also supports regex, here is an example:
    ```
-   prometheus_http_requests_total{handler!="/api/v1/query", job=~"p*", code!~"2..", PrometheusDatabaseLabel="exampleDatabase", PrometheusTableLabel="exampleTable"}
+   prometheus_http_requests_total{handler!="/api/v1/query", job=~"p*", code!~"2..", prometheusDatabase="prometheusDatabase", prometheusMetricsTable="prometheusMetricsTable"}
    ```
-   This example is querying for all rows from `exampleTable` of `exampleDatabase` where:
+   This example is querying for all rows from `prometheusMetricsTable` of `prometheusDatabase` where:
   
    - column `metric name` equals to `prometheus_http_requests_total`;
    - column `handler` does not equal to `/api/v1/query`;
@@ -369,8 +344,8 @@ remote_read:
         docker run \
         -p 3080:3080 \
         timestream-prometheus-connector-docker \
-        --database-label=PrometheusDatabaseLabel \ 
-        --table-label=PrometheusTableLabel \
+        --default-database=prometheusDatabase \ 
+        --default-table=prometheusMetricsTable \
         --web.listen-address=:3080
         ``` 
     If the port is used by a Docker container that could be removed:

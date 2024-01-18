@@ -50,8 +50,8 @@ const (
 	envName               = "IN_SUB_PROCESS"
 	envValue              = "1"
 	envString             = "IN_SUB_PROCESS=1"
-	tableLabel            = "foo"
-	databaseLabel         = "bar"
+	tableValue            = "foo"
+	databaseValue         = "bar"
 	assertInputMessage    = "Errors must not occur while marshalling input data."
 	assertResponseMessage = "Error must not occur while reading the response body from the test output."
 	writeRequestType      = "*prompb.WriteRequest"
@@ -82,11 +82,11 @@ var (
 				Value: "value_1",
 			},
 			{
-				Name:  databaseLabel,
+				Name:  databaseValue,
 				Value: "foo",
 			},
 			{
-				Name:  tableLabel,
+				Name:  tableValue,
 				Value: "bar",
 			},
 		},
@@ -104,8 +104,8 @@ var (
 				EndTimestampMs:   mockEndUnixTime,
 				Matchers: []*prompb.LabelMatcher{
 					createLabelMatcher(prompb.LabelMatcher_EQ, model.MetricNameLabel, "go_gc_duration_seconds"),
-					createLabelMatcher(prompb.LabelMatcher_EQ, databaseLabel, "bar"),
-					createLabelMatcher(prompb.LabelMatcher_EQ, tableLabel, "foo"),
+					createLabelMatcher(prompb.LabelMatcher_EQ, databaseValue, "bar"),
+					createLabelMatcher(prompb.LabelMatcher_EQ, tableValue, "foo"),
 				},
 				Hints: &prompb.ReadHints{
 					StepMs:  0,
@@ -170,15 +170,15 @@ func setUp() ([]string, *connectionConfig) {
 	promLogFormat.Set("logfmt")
 	promLogLevel.Set("info")
 
-	return []string{"cmd", "--database-label=foo", "--table-label=bar"}, &connectionConfig{
+	return []string{"cmd", "--default-database=foo", "--default-table=bar"}, &connectionConfig{
 		clientConfig:  &clientConfig{region: "us-east-1"},
 		promlogConfig: promlog.Config{Format: promLogFormat, Level: promLogLevel},
-		databaseLabel: "foo",
-		tableLabel:    "bar",
-		enableLogging: true,
-		listenAddr:    ":9201",
-		maxRetries:    3,
-		telemetryPath: "/metrics",
+		defaultDatabase: "foo",
+		defaultTable:    "bar",
+		enableLogging:   true,
+		listenAddr:      ":9201",
+		maxRetries:      3,
+		telemetryPath:   "/metrics",
 	}
 }
 
@@ -319,8 +319,8 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 		{
 			name: "error decoding API Gateway request",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest: events.APIGatewayProxyRequest{
 				IsBase64Encoded: true,
@@ -334,8 +334,8 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 		{
 			name: "error decoding Prometheus write request",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest: events.APIGatewayProxyRequest{
 				IsBase64Encoded: true,
@@ -349,8 +349,8 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 		{
 			name: "error no Prometheus remote request version header",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest: events.APIGatewayProxyRequest{
 				IsBase64Encoded: true,
@@ -364,8 +364,8 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 		{
 			name: "error no basic auth header",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest: events.APIGatewayProxyRequest{
 				IsBase64Encoded: true,
@@ -378,8 +378,8 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 		{
 			name: "error invalid basic auth header",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest: events.APIGatewayProxyRequest{
 				IsBase64Encoded: true,
@@ -393,8 +393,8 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 		{
 			name: "error parse environment variables",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 				{key: enableLogConfig.envFlag, value: "invalid"},
 			},
 			inputRequest: events.APIGatewayProxyRequest{
@@ -436,8 +436,8 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 		{
 			name: "success write request",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
 			mockSDKError:       nil,
@@ -446,8 +446,8 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 		{
 			name: "error unmarshalling write request",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(invalidWriteRequest), Headers: validWriteHeader},
 			mockSDKError:       nil,
@@ -456,8 +456,8 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 		{
 			name: "error during write",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
 			mockSDKError:       fmt.Errorf("foo"),
@@ -466,8 +466,8 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 		{
 			name: "SDK error during write",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
 			mockSDKError:       &timestreamwrite.RejectedRecordsException{},
@@ -476,21 +476,21 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 		{
 			name: "Missing database name from write",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
-			mockSDKError:       errors.NewMissingDatabaseWithWriteError(databaseLabel, emptyTimeSeries),
+			mockSDKError:       errors.NewMissingDatabaseWithWriteError(databaseValue, emptyTimeSeries),
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "Missing table name from write",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
-			mockSDKError:       errors.NewMissingTableWithWriteError(tableLabel, emptyTimeSeries),
+			mockSDKError:       errors.NewMissingTableWithWriteError(tableValue, emptyTimeSeries),
 			expectedStatusCode: http.StatusBadRequest,
 		},
 	}
@@ -529,8 +529,8 @@ func TestLambdaHandlerReadRequest(t *testing.T) {
 		{
 			name: "error unmarshalling read request",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(invalidReadRequest), Headers: validReadHeader},
 			mockSDKError:       nil,
@@ -539,8 +539,8 @@ func TestLambdaHandlerReadRequest(t *testing.T) {
 		{
 			name: "success read request",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
 			mockSDKError:       nil,
@@ -549,8 +549,8 @@ func TestLambdaHandlerReadRequest(t *testing.T) {
 		{
 			name: "error during read",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
 			mockSDKError:       fmt.Errorf("foo"),
@@ -559,8 +559,8 @@ func TestLambdaHandlerReadRequest(t *testing.T) {
 		{
 			name: "SDK error during read",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
 			mockSDKError:       &timestreamquery.ValidationException{},
@@ -569,21 +569,21 @@ func TestLambdaHandlerReadRequest(t *testing.T) {
 		{
 			name: "Missing database name from read",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
-			mockSDKError:       errors.NewMissingDatabaseWithQueryError(databaseLabel),
+			mockSDKError:       errors.NewMissingDatabaseError(databaseValue),
 			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "Missing table name from read",
 			lambdaOptions: []lambdaEnvOptions{
-				{key: tableLabelConfig.envFlag, value: tableLabel},
-				{key: databaseLabelConfig.envFlag, value: databaseLabel},
+				{key: defaultTableConfig.envFlag, value: tableValue},
+				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
 			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
-			mockSDKError:       errors.NewMissingTableWithQueryError(tableLabel),
+			mockSDKError:       errors.NewMissingTableError(tableValue),
 			expectedStatusCode: http.StatusBadRequest,
 		},
 	}
@@ -799,7 +799,7 @@ func TestWriteHandler(t *testing.T) {
 		{
 			name:                  "Missing database name from write",
 			request:               validWriteRequest,
-			returnError:           errors.NewMissingDatabaseWithWriteError(databaseLabel, emptyTimeSeries),
+			returnError:           errors.NewMissingDatabaseWithWriteError(databaseValue, emptyTimeSeries),
 			getWriteRequestReader: getReaderHelper,
 			basicAuthHeader:       basicAuthHeader,
 			encodedBasicAuth:      encodedBasicAuth,
@@ -808,7 +808,7 @@ func TestWriteHandler(t *testing.T) {
 		{
 			name:                  "Missing table name from write",
 			request:               validWriteRequest,
-			returnError:           errors.NewMissingTableWithWriteError(tableLabel, emptyTimeSeries),
+			returnError:           errors.NewMissingTableWithWriteError(tableValue, emptyTimeSeries),
 			getWriteRequestReader: getReaderHelper,
 			basicAuthHeader:       basicAuthHeader,
 			encodedBasicAuth:      encodedBasicAuth,
@@ -968,7 +968,7 @@ func TestReadHandler(t *testing.T) {
 		{
 			name:                 "Missing database name from read",
 			request:              validReadRequest,
-			returnError:          errors.NewMissingDatabaseWithQueryError(databaseLabel),
+			returnError:          errors.NewMissingDatabaseError(databaseValue),
 			returnResponse:       nil,
 			getReadRequestReader: getReaderHelper,
 			basicAuthHeader:      basicAuthHeader,
@@ -978,7 +978,7 @@ func TestReadHandler(t *testing.T) {
 		{
 			name:                 "Missing table name from read",
 			request:              validReadRequest,
-			returnError:          errors.NewMissingTableWithQueryError(tableLabel),
+			returnError:          errors.NewMissingTableError(tableValue),
 			returnResponse:       nil,
 			getReadRequestReader: getReaderHelper,
 			basicAuthHeader:      basicAuthHeader,
