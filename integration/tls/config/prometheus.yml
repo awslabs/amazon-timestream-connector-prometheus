@@ -20,16 +20,6 @@ remote_write:
       username: accessKey
       password: secretAccessKey
 
-    write_relabel_configs:
-      - source_labels: [ "__name__" ]
-        regex: .*
-        replacement: tls
-        target_label: timestreamTable
-      - source_labels: [ "__name__" ]
-        regex: .*
-        replacement: tlsDB
-        target_label: timestreamDatabase
-
 remote_read:
   - url: "https://host.docker.internal:9201/read"
 
