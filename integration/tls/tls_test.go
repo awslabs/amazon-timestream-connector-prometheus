@@ -43,17 +43,13 @@ const (
 	tlsServerCertPath          = "cert"
 	connectorDockerImageName   = "timestream-prometheus-connector-docker"
 	connectorDockerImagePath   = "../../resources/timestream-prometheus-connector-docker-image-1.1.0.tar.gz"
-	databaseLabelCMD           = "--database-label=timestreamDatabase"
-	tableLabelCMd              = "--table-label=timestreamTable"
 	defaultDatabaseCMD         = "--default-database=PrometheusDatabase"
-	defaultTableCMd            = "--default-table=PrometheusTable"
+	defaultTableCMd            = "--default-table=PrometheusMetricsTable"
 	tlsCertificateCMD          = "--tls-certificate=/root/cert/serverCertificate.crt"
 	tlsKeyCMD                  = "--tls-key=/root/cert/serverPrivateKey.key"
 	tlsUnmatchedCertificateCMD = "--tls-certificate=/root/cert/rootCA.pem"
 	tlsInvalidKeyFileCMD       = "--tls-key=/root/cert/invalidPrivateKey.key"
 	region                     = "us-east-1"
-	databaseLabel              = "timestreamDatabase"
-	tableLabel                 = "timestreamTable"
 	database                   = "tlsDB"
 	table                      = "tls"
 	retries                    = 6
@@ -61,10 +57,10 @@ const (
 )
 
 var (
-	connectorTLSCMDs                      = []string{databaseLabelCMD, tableLabelCMd, defaultDatabaseCMD, defaultTableCMd, tlsCertificateCMD, tlsKeyCMD}
-	connectorCMDsWithUnmatchedCertificate = []string{databaseLabelCMD, tableLabelCMd, defaultDatabaseCMD, defaultTableCMd, tlsUnmatchedCertificateCMD, tlsKeyCMD}
-	connectorCMDsWithUnmatchedKey         = []string{databaseLabelCMD, tableLabelCMd, defaultDatabaseCMD, defaultTableCMd, tlsCertificateCMD, tlsInvalidKeyFileCMD}
-	connectorCMDsWithInvalidFile          = []string{databaseLabelCMD, tableLabelCMd, defaultDatabaseCMD, defaultTableCMd, tlsKeyCMD, tlsKeyCMD}
+	connectorTLSCMDs                      = []string{defaultDatabaseCMD, defaultTableCMd, tlsCertificateCMD, tlsKeyCMD}
+	connectorCMDsWithUnmatchedCertificate = []string{defaultDatabaseCMD, defaultTableCMd, tlsUnmatchedCertificateCMD, tlsKeyCMD}
+	connectorCMDsWithUnmatchedKey         = []string{defaultDatabaseCMD, defaultTableCMd, tlsCertificateCMD, tlsInvalidKeyFileCMD}
+	connectorCMDsWithInvalidFile          = []string{defaultDatabaseCMD, defaultTableCMd, tlsKeyCMD, tlsKeyCMD}
 	destinations                          = map[string][]string{database: {table}}
 )
 
@@ -113,7 +109,7 @@ func TestHttpsSupport(t *testing.T) {
 	count := getDatabaseRowCount(t, database, table)
 	assert.Greater(t, count, 0)
 
-	statusCode, err := sendReadRequest(t, fmt.Sprintf("prometheus_http_requests_total{%s=\"%s\", %s=\"%s\"}", databaseLabel, database, tableLabel, table))
+	statusCode, err := sendReadRequest(t, "prometheus_http_requests_total{}")
 	require.NoError(t, err)
 	assert.Equal(t, expectedStatusCode, statusCode)
 
