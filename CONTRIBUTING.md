@@ -43,8 +43,9 @@ GitHub provides additional document on [forking a repository](https://help.githu
 ## Testing Locally
 1. Execute and ensure all unit tests pass by executing: `go test -tags=unit -cover -v ./timestream ./`
 2. Ensure IT Tests Pass(Requires AWS credentials) by executing: `go test -v ./integration`
+3. Ensure correctness tests work, see [README](./correctness/README.md) for how to test.
 <br>NOTE - Clear the test cache if running multiple times: `go clean -testcache`
-3. If your change is related to TLS encryption between the connector and prometheus, see [README](./integration/tls/README.md) for how to test.
+4. If your change is related to TLS encryption between the connector and prometheus, see [README](./integration/tls/README.md) for how to test.
 
 
 ## Finding contributions to work on
