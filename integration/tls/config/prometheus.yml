@@ -10,25 +10,27 @@ scrape_configs:
       - targets: ['localhost:9090']
 
 remote_write:
-  - url: "https://host.docker.internal:9201/write"
+- url: "https://host.docker.internal:9201/write"
+  queue_config:
+    max_samples_per_send: 100
 
-    tls_config:
-      ca_file: "/etc/prometheus/RootCA.pem"
+  tls_config:
+    ca_file: "/etc/prometheus/RootCA.pem"
 
-    basic_auth:
-      # Update the user name and password with valid IAM credentials.
-      username: accessKey
-      password: secretAccessKey
+  basic_auth:
+    # Update the user name and password with valid IAM credentials.
+    username: accessKey
+    password: secretAccessKey
 
 remote_read:
-  - url: "https://host.docker.internal:9201/read"
+- url: "https://host.docker.internal:9201/read"
 
-    tls_config:
-      ca_file: "/etc/prometheus/RootCA.pem"
+  tls_config:
+    ca_file: "/etc/prometheus/RootCA.pem"
 
-    basic_auth:
-      # Update the user name and password with valid IAM credentials.
-      username: accessKey
-      password: secretAccessKey
+  basic_auth:
+    # Update the user name and password with valid IAM credentials.
+    username: accessKey
+    password: secretAccessKey
 
-    read_recent: true
+  read_recent: true

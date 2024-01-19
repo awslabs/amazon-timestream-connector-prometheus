@@ -532,28 +532,28 @@ The default-database name and default-table name are required for data ingestion
     
    | Runtime              | Command                                                                                                                                                                                             |
    | -------------------- |-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --region=us-west-2`                                              |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --region=us-west-2`                                              |
    | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={database_label=prometheusDatabase,table_label=prometheusMetricsTable,region=us-west-2}"` |
 
 2. Configure the Prometheus Connector listen for requests on an HTTPS server `https://localhost:9201` with TLS encryption.
 
    | Runtime              | Command                                                                                                                                                                                                    |
    | -------------------- |------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --tls-certificate=serverCertificate.crt --tls-key=serverPrivateKey.key` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --tls-certificate=serverCertificate.crt --tls-key=serverPrivateKey.key` |
    | AWS Lambda Function  | `N/A`                                                                                                                                                                                                      |
 
 3. Configure the Prometheus Connector to listen for Prometheus requests on `http://localhost:3080`.
 
    | Runtime              | Command                                                                                                                                                        |
    | -------------------- |----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --web.listen-address=:3080` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --web.listen-address=:3080` |
    | AWS Lambda Function  | `N/A`                                                                                                                                                          |
 
 4. Configure the Prometheus Connector to listen for Prometheus requests on `http://localhost:3080` and serve collected metrics to `http://localhost:3080/timestream-metrics`.
 
    | Runtime              | Command                                                                                                                                                                                                 |
    | -------------------- |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --web.listen-address=:3080 --web.telemetry-path=/timestream-metrics` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --web.listen-address=:3080 --web.telemetry-path=/timestream-metrics` |
    | AWS Lambda Function  | `N/A`                                                                                                                                                                                                   |
 
 ### Retry Configuration Options
@@ -570,7 +570,7 @@ Configure the Prometheus Connector to retry up to 10 times upon recoverable erro
 
 | Runtime              | Command                                                                                                                                                                                           |
 | -------------------- |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --max-retries=10`                                              |
+| Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --max-retries=10`                                              |
 | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={database_label=prometheusDatabase,table_label=prometheusMetricsTable,max_retries=10}"` |
 
 ### Logger Configuration Options
@@ -598,21 +598,21 @@ To quickly spot and resolve issues that may be caused by ignored Prometheus time
 
    | Runtime              | Command                                                                                                                                                                                                            |
    | -------------------- |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --enable-logging=false`                                                         |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --enable-logging=false`                                                         |
    | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusPrometheus Connector --environment "Variables={database_label=prometheusDatabase,table_label=prometheusMetricsTable,enable_logging=false}"` |
 
 2. Toggle the Prometheus Connector to halt on: <br />- label names exceeding the maximum length supported by Amazon Timestream;<br />- Prometheus time series with non-finite values.
 
    | Runtime              | Command                                                                                                                                                                                                                                                           |
    | -------------------- |-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --fail-on-long-label=true --fail-on-invalid-sample=true` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --fail-on-long-label=true --fail-on-invalid-sample=true` |
    | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={database_label=prometheusDatabase,table_label=prometheusMetricsTable,fail_on_long_label=true, fail_on_invalid_sample_value=true}"`                     |
 
 3. Configure the Prometheus Connector to output the logs at debug level and in JSON format.
 
     | Runtime              | Command                                                                                                                                                                                                             |
     | -------------------- |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-    | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --log.level=debug --log.format=json`                                             |
+    | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --log.level=debug --log.format=json`                                             |
     | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={database_label=prometheusDatabase,table_label=prometheusMetricsTable,log_level=debug, log_format=json}"` |
 
 ## Authentication
