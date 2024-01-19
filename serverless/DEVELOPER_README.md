@@ -200,8 +200,8 @@ Follow the verification steps in [GETTING_STARTED.MD#verification](../GETTING_ST
 
 | Option                    | Description                                                  | Default Value                   |
 | ------------------------- | ------------------------------------------------------------ | ------------------------------- |
-| DefaultDatabase   		| The Prometheus label containing the database name.           | defaultDatabase                 |
-| DefaultTable      		| The Prometheus label containing the table name.              | defaultTable                    |
+| DefaultDatabase   		| The Prometheus label containing the database name.           | PrometheusDatabase                 |
+| DefaultTable      		| The Prometheus label containing the table name.              | PrometheusMetricsTable                    |
 | MemorySize                | The memory size of the AWS Lambda function.                  | 512                             |
 | TimeoutInMillis           | The amount of time in milliseconds to run the connector on AWS Lambda before timing out. | 30000                           |
 | ReadThrottlingBurstLimit  | The number of burst read requests per second that API Gateway permits. | 1200                             |
