@@ -243,6 +243,21 @@ remote_read:
      ca_file: RootCA.pem
 ```
 
+### Creating Self Signed TLS Certificates
+
+Execute the following commands to generate new TLS certificates for testing TLS integration tests.
+
+```
+openssl req -x509 -nodes -new -sha256 -days 1024 -newkey rsa:2048 -keyout RootCA.key -out RootCA.pem -subj "/C=US/ST=Washington/L=Seattle/O=Amazon Web Services/CN=host.docker.internal"
+
+openssl req -new -nodes -newkey rsa:2048 -keyout serverPrivateKey.key -out serverCertificateSigningRequest.csr -subj "/C=US/ST=Washington/L=Seattle/O=Amazon Web Services/CN=host.docker.internal"
+
+openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -CA RootCA.pem -CAkey RootCA.key -CAcreateserial -extfile <(printf "subjectAltName=DNS:host.docker.internal") -out serverCertificate.crt
+
+```
+
+Use the output `RootCA.pem`, `serverCertificate.crt`, and `serverPrivateKey.key` files to replace their outdated  versions under `integration/tls/cert`.
+
 ## Verification
 
 1. To verify Prometheus is running, open `http://localhost:9090/` in a browser, this opens Prometheus' [expression browser](https://prometheus.io/docs/visualization/browser/#expression-browser).
