@@ -44,7 +44,7 @@ const (
 	connectorDockerImageName   = "timestream-prometheus-connector-docker"
 	connectorDockerImagePath   = "../../resources/timestream-prometheus-connector-docker-image-1.1.0.tar.gz"
 	defaultDatabaseCMD         = "--default-database=tlsDB"
-	defaultTableCMd            = "--default-table=tls"
+	defaultTableCMD            = "--default-table=tls"
 	tlsCertificateCMD          = "--tls-certificate=/root/cert/serverCertificate.crt"
 	tlsKeyCMD                  = "--tls-key=/root/cert/serverPrivateKey.key"
 	tlsUnmatchedCertificateCMD = "--tls-certificate=/root/cert/rootCA.pem"
@@ -57,10 +57,10 @@ const (
 )
 
 var (
-	connectorTLSCMDs                      = []string{defaultDatabaseCMD, defaultTableCMd, tlsCertificateCMD, tlsKeyCMD}
-	connectorCMDsWithUnmatchedCertificate = []string{defaultDatabaseCMD, defaultTableCMd, tlsUnmatchedCertificateCMD, tlsKeyCMD}
-	connectorCMDsWithUnmatchedKey         = []string{defaultDatabaseCMD, defaultTableCMd, tlsCertificateCMD, tlsInvalidKeyFileCMD}
-	connectorCMDsWithInvalidFile          = []string{defaultDatabaseCMD, defaultTableCMd, tlsKeyCMD, tlsKeyCMD}
+	connectorTLSCMDs                      = []string{defaultDatabaseCMD, defaultTableCMD, tlsCertificateCMD, tlsKeyCMD}
+	connectorCMDsWithUnmatchedCertificate = []string{defaultDatabaseCMD, defaultTableCMD, tlsUnmatchedCertificateCMD, tlsKeyCMD}
+	connectorCMDsWithUnmatchedKey         = []string{defaultDatabaseCMD, defaultTableCMD, tlsCertificateCMD, tlsInvalidKeyFileCMD}
+	connectorCMDsWithInvalidFile          = []string{defaultDatabaseCMD, defaultTableCMD, tlsKeyCMD, tlsKeyCMD}
 	destinations                          = map[string][]string{database: {table}}
 )
 

@@ -301,14 +301,14 @@ Use the output `RootCA.pem`, `serverCertificate.crt`, and `serverPrivateKey.key`
     
     This sample output indicates that 340 rows has been ingested.
    
-4. To verify the Prometheus Connector can query date from Amazon Timestream, query with Prometheus Query Language (PromQL) in the `http://localhost:9090/` in a browser, which opens Prometheus' [expression browser](https://prometheus.io/docs/visualization/browser/#expression-browser). 
-   The PromQL will query the values for `default-databse` and `default-table` as which database and table that contain the data. Here is a simple example:
+4. To verify the Prometheus Connector can query data from Amazon Timestream, visit `http://localhost:9090/` in a browser, which opens Prometheus' [expression browser](https://prometheus.io/docs/visualization/browser/#expression-browser), and execute a Prometheus Query Language (PromQL) query.
+   The PromQL query will use the values of `default-database` and `default-table` as the corresponding database and table that contains data. Here is a simple example:
    
    ```
    prometheus_http_requests_total{}
    ```
    `prometheus_http_requests_total` is a metric name. The database and table being queried are the corresponding `default-database` and `default-table` configured for the Prometheus connector.
-   This PromQL will return all the time series from the past hour with the metric name `prometheus_http_requests_total` in `default-table` of `default-database`.
+   This PromQL will return all the time series data from the past hour with the metric name `prometheus_http_requests_total` in `default-table` of `default-database`.
    Here is a query result example:
    ![](documentation/example/query_example.PNG)
    
@@ -316,7 +316,7 @@ Use the output `RootCA.pem`, `serverCertificate.crt`, and `serverPrivateKey.key`
    ```
    prometheus_http_requests_total{handler!="/api/v1/query", job=~"p*", code!~"2..", prometheusDatabase="prometheusDatabase", prometheusMetricsTable="prometheusMetricsTable"}
    ```
-   This example is querying for all rows from `prometheusMetricsTable` of `prometheusDatabase` where:
+   This example queries all rows from `prometheusMetricsTable` of `prometheusDatabase` where:
   
    - column `metric name` equals to `prometheus_http_requests_total`;
    - column `handler` does not equal to `/api/v1/query`;
