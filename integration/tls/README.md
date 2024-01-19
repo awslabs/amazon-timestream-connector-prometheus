@@ -7,7 +7,7 @@ Prior to running the tests in tls_test.go, ensure the following:
 
 ## How to build and save the docker image
 1. Execute the following command to build the docker image:
-`docker buildx build . -t timestream-prometheus-connector-docker`
+`docker build . -t timestream-prometheus-connector-docker`
 2. Execute the following command to save the docker image as a compressed file and update the `version` appropriately:
 `docker save timestream-prometheus-connector-docker | gzip > timestream-prometheus-connector-docker-image-<version>.tar.gz`
 

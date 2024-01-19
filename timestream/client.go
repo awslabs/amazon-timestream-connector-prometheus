@@ -346,7 +346,6 @@ func processTimeSeries(wc *WriteClient, operationOnLongMetrics longMetricsOperat
 		databaseName = wc.client.defaultDataBase
 		tableName = wc.client.defaultTable
 
-
 		if len(databaseName) == 0 {
 			err = errors.NewMissingDatabaseWithWriteError(wc.client.defaultDataBase, timeSeries)
 			return nil, err
