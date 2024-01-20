@@ -53,12 +53,8 @@ var (
 )
 
 const (
-	mockDatabaseLabel = "timestreamDatabaseName"
-	mockTableLabel    = "timestreamTableName"
 	mockTableName     = "prom"
 	mockDatabaseName  = "promDB"
-	mockTableName2    = "prom2"
-	mockDatabaseName2 = "promDB2"
 	mockRegion        = "us-east-1"
 	mockLongMetric    = "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
 	instance          = "localhost:9090"
@@ -101,7 +97,7 @@ func (m *mockTimestreamQueryClient) QueryPages(input *timestreamquery.QueryInput
 }
 
 func TestClientNewClient(t *testing.T) {
-	client := NewBaseClient(mockDatabaseLabel, mockTableLabel, mockDatabaseName, mockTableName)
+	client := NewBaseClient(mockDatabaseName, mockTableName)
 	client.NewWriteClient(mockLogger, &aws.Config{Region: aws.String(mockRegion)}, true, true)
 
 	assert.NotNil(t, client.writeClient)
@@ -118,7 +114,7 @@ func TestClientNewQueryClient(t *testing.T) {
 	mockTimestreamQueryClient.On("QueryPages", queryInput,
 		mock.AnythingOfType(functionType)).Return(nil)
 
-	client := NewBaseClient(mockDatabaseLabel, mockTableLabel, mockDatabaseName, mockTableName)
+	client := NewBaseClient(mockDatabaseName, mockTableName)
 	client.NewQueryClient(mockLogger, &aws.Config{Region: aws.String(mockRegion)})
 
 	assert.NotNil(t, client.queryClient)
@@ -137,48 +133,6 @@ func TestQueryClientRead(t *testing.T) {
 				EndTimestampMs:   mockEndUnixTime,
 				Matchers: []*prompb.LabelMatcher{
 					createLabelMatcher(prompb.LabelMatcher_EQ, model.MetricNameLabel, metricName),
-					createLabelMatcher(prompb.LabelMatcher_EQ, mockDatabaseLabel, mockDatabaseName),
-					createLabelMatcher(prompb.LabelMatcher_EQ, mockTableLabel, mockTableName),
-				},
-				Hints: createReadHints(),
-			},
-		},
-	}
-	requestWithoutMapping := &prompb.ReadRequest{
-		Queries: []*prompb.Query{
-			{
-				StartTimestampMs: mockUnixTime,
-				EndTimestampMs:   mockEndUnixTime,
-				Matchers: []*prompb.LabelMatcher{
-					createLabelMatcher(prompb.LabelMatcher_EQ, model.MetricNameLabel, metricName),
-				},
-				Hints: createReadHints(),
-			},
-		},
-	}
-
-	requestMissingTable := &prompb.ReadRequest{
-		Queries: []*prompb.Query{
-			{
-				StartTimestampMs: mockUnixTime,
-				EndTimestampMs:   mockEndUnixTime,
-				Matchers: []*prompb.LabelMatcher{
-					createLabelMatcher(prompb.LabelMatcher_EQ, model.MetricNameLabel, metricName),
-					createLabelMatcher(prompb.LabelMatcher_EQ, mockDatabaseLabel, mockDatabaseName),
-				},
-				Hints: createReadHints(),
-			},
-		},
-	}
-
-	requestMissingDatabase := &prompb.ReadRequest{
-		Queries: []*prompb.Query{
-			{
-				StartTimestampMs: mockUnixTime,
-				EndTimestampMs:   mockEndUnixTime,
-				Matchers: []*prompb.LabelMatcher{
-					createLabelMatcher(prompb.LabelMatcher_EQ, model.MetricNameLabel, metricName),
-					createLabelMatcher(prompb.LabelMatcher_EQ, mockTableLabel, mockTableName),
 				},
 				Hints: createReadHints(),
 			},
@@ -273,8 +227,6 @@ func TestQueryClientRead(t *testing.T) {
 			EndTimestampMs:   mockEndUnixTime,
 			Matchers: []*prompb.LabelMatcher{
 				createLabelMatcher(prompb.LabelMatcher_EQ, model.MetricNameLabel, metricName),
-				createLabelMatcher(prompb.LabelMatcher_EQ, mockDatabaseLabel, mockDatabaseName),
-				createLabelMatcher(prompb.LabelMatcher_EQ, mockTableLabel, mockTableName),
 				createLabelMatcher(prompb.LabelMatcher_NEQ, model.QuantileLabel, quantile),
 				createLabelMatcher(prompb.LabelMatcher_RE, model.JobLabel, jobRegex),
 				createLabelMatcher(prompb.LabelMatcher_NRE, model.InstanceLabel, instanceRegex),
@@ -297,8 +249,6 @@ func TestQueryClientRead(t *testing.T) {
 				EndTimestampMs:   mockEndUnixTime,
 				Matchers: []*prompb.LabelMatcher{
 					createLabelMatcher(invalidMatcher, model.MetricNameLabel, metricName),
-					createLabelMatcher(prompb.LabelMatcher_EQ, mockDatabaseLabel, mockDatabaseName),
-					createLabelMatcher(prompb.LabelMatcher_EQ, mockTableLabel, mockTableName),
 				},
 				Hints: createReadHints(),
 			},
@@ -312,8 +262,6 @@ func TestQueryClientRead(t *testing.T) {
 				EndTimestampMs:   mockEndUnixTime,
 				Matchers: []*prompb.LabelMatcher{
 					createLabelMatcher(prompb.LabelMatcher_EQ, model.MetricNameLabel, metricName),
-					createLabelMatcher(prompb.LabelMatcher_EQ, mockDatabaseLabel, mockDatabaseName),
-					createLabelMatcher(prompb.LabelMatcher_EQ, mockTableLabel, mockTableName),
 					createLabelMatcher(prompb.LabelMatcher_RE, model.JobLabel, invalidRegex),
 				},
 				Hints: createReadHints(),
@@ -336,32 +284,8 @@ func TestQueryClientRead(t *testing.T) {
 
 		c := &Client{
 			writeClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
-		}
-		c.queryClient = createNewQueryClientTemplate(c)
-
-		readResponse, err := c.queryClient.Read(request, mockCredentials)
-		assert.Nil(t, err)
-		assert.Equal(t, response, readResponse)
-
-		mockTimestreamQueryClient.AssertExpectations(t)
-	})
-
-	t.Run("success without default db and table", func(t *testing.T) {
-		mockTimestreamQueryClient := new(mockTimestreamQueryClient)
-		mockTimestreamQueryClient.On("QueryPages", queryInput,
-			mock.AnythingOfType(functionType)).Return(nil)
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
-			return mockTimestreamQueryClient, nil
-		}
-
-		c := &Client{
-			writeClient:   nil,
-			databaseLabel: mockDatabaseLabel,
-			tableLabel:    mockTableLabel,
 		}
 		c.queryClient = createNewQueryClientTemplate(c)
 
@@ -387,7 +311,7 @@ func TestQueryClientRead(t *testing.T) {
 		}
 		c.queryClient = createNewQueryClientTemplate(c)
 
-		readResponse, err := c.queryClient.Read(requestWithoutMapping, mockCredentials)
+		readResponse, err := c.queryClient.Read(request, mockCredentials)
 		assert.Nil(t, err)
 		assert.Equal(t, response, readResponse)
 
@@ -401,13 +325,11 @@ func TestQueryClientRead(t *testing.T) {
 
 		c := &Client{
 			writeClient:   nil,
-			databaseLabel: mockDatabaseLabel,
-			tableLabel:    mockTableLabel,
 		}
 		c.queryClient = createNewQueryClientTemplate(c)
 
-		_, err := c.queryClient.Read(requestMissingDatabase, mockCredentials)
-		assert.IsType(t, &errors.MissingDatabaseWithQueryError{}, err)
+		_, err := c.queryClient.Read(request, mockCredentials)
+		assert.IsType(t, &errors.MissingDatabaseError{}, err)
 	})
 
 	t.Run("error from buildCommands with missing table name in request", func(t *testing.T) {
@@ -417,13 +339,12 @@ func TestQueryClientRead(t *testing.T) {
 
 		c := &Client{
 			writeClient:   nil,
-			databaseLabel: mockDatabaseLabel,
-			tableLabel:    mockTableLabel,
+			defaultDataBase: mockDatabaseName,
 		}
 		c.queryClient = createNewQueryClientTemplate(c)
 
-		_, err := c.queryClient.Read(requestMissingTable, mockCredentials)
-		assert.IsType(t, &errors.MissingTableWithQueryError{}, err)
+		_, err := c.queryClient.Read(request, mockCredentials)
+		assert.IsType(t, &errors.MissingTableError{}, err)
 	})
 
 	t.Run("error from QueryPages()", func(t *testing.T) {
@@ -438,8 +359,6 @@ func TestQueryClientRead(t *testing.T) {
 
 		c := &Client{
 			writeClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -454,8 +373,6 @@ func TestQueryClientRead(t *testing.T) {
 	t.Run("success convert result", func(t *testing.T) {
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -469,8 +386,6 @@ func TestQueryClientRead(t *testing.T) {
 	t.Run("error from convertToResult with invalid measureValue", func(t *testing.T) {
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -485,8 +400,6 @@ func TestQueryClientRead(t *testing.T) {
 	t.Run("error from convertToResult with invalid time", func(t *testing.T) {
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -501,8 +414,6 @@ func TestQueryClientRead(t *testing.T) {
 	t.Run("convert result with empty queryOutput", func(t *testing.T) {
 		c := &Client{
 			writeClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -517,8 +428,6 @@ func TestQueryClientRead(t *testing.T) {
 	t.Run("success build command", func(t *testing.T) {
 		c := &Client{
 			writeClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -532,8 +441,6 @@ func TestQueryClientRead(t *testing.T) {
 	t.Run("error from buildCommand with unknown matcher type", func(t *testing.T) {
 		c := &Client{
 			writeClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -557,8 +464,6 @@ func TestQueryClientRead(t *testing.T) {
 
 		c := &Client{
 			writeClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -591,8 +496,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -626,8 +529,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -686,45 +587,6 @@ func TestWriteClientWrite(t *testing.T) {
 		mockTimestreamWriteClient.AssertExpectations(t)
 	})
 
-	t.Run("success writing samples to different destination", func(t *testing.T) {
-		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
-
-		expectedInputPromTable := createNewWriteRecordsInputTemplate()
-		expectedInputAnotherTable := createNewWriteRecordsInputTemplate()
-		expectedInputAnotherTable.DatabaseName = aws.String(mockDatabaseName2)
-		expectedInputAnotherTable.TableName = aws.String(mockTableName2)
-
-		mockTimestreamWriteClient.On(
-			"WriteRecords",
-			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
-				sortRecords(writeInput)
-				sortRecords(expectedInputPromTable)
-				sortRecords(expectedInputAnotherTable)
-				return reflect.DeepEqual(writeInput, expectedInputPromTable) || reflect.DeepEqual(writeInput, expectedInputAnotherTable)
-			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
-
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
-			return mockTimestreamWriteClient, nil
-		}
-
-		c := &Client{
-			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
-			defaultDataBase: mockDatabaseName,
-			defaultTable:    mockTableName,
-		}
-		c.writeClient = createNewWriteClientTemplate(c)
-		req := createNewRequestTemplate()
-		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplateWithDifferentDestination())
-
-		err := c.writeClient.Write(req, mockCredentials)
-		assert.Nil(t, err)
-
-		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 2)
-		mockTimestreamWriteClient.AssertExpectations(t)
-	})
-
 	t.Run("success writing samples to the same destination", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
@@ -745,8 +607,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -759,38 +619,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
 		mockTimestreamWriteClient.AssertExpectations(t)
-	})
-
-	t.Run("missing database name and table name in write series", func(t *testing.T) {
-		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
-
-		expectedInput := createNewWriteRecordsInputTemplate()
-		expectedInput.Records = append(expectedInput.Records, createNewRecordTemplate())
-
-		mockTimestreamWriteClient.On(
-			"WriteRecords",
-			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
-				sortRecords(writeInput)
-				sortRecords(expectedInput)
-				return reflect.DeepEqual(writeInput, expectedInput)
-			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
-
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
-			return mockTimestreamWriteClient, nil
-		}
-
-		c := &Client{
-			queryClient:   nil,
-			databaseLabel: mockDatabaseLabel,
-			tableLabel:    mockTableLabel,
-		}
-		c.writeClient = createNewWriteClientTemplate(c)
-		req := createNewRequestTemplate()
-		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplateWithoutDatabaseLabelAndTableLabel())
-
-		err := c.writeClient.Write(req, mockCredentials)
-		expectedErr := errors.NewMissingDatabaseWithWriteError(mockDatabaseLabel, createTimeSeriesTemplateWithoutDatabaseLabelAndTableLabel())
-		assert.Equal(t, err, expectedErr)
 	})
 
 	t.Run("missing database name in write series", func(t *testing.T) {
@@ -813,15 +641,13 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:   nil,
-			databaseLabel: mockDatabaseLabel,
-			tableLabel:    mockTableLabel,
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
 		req := createNewRequestTemplate()
-		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplateWithoutDatabaseLabel())
+		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplate())
 
 		err := c.writeClient.Write(req, mockCredentials)
-		expectedErr := errors.NewMissingDatabaseWithWriteError(mockDatabaseLabel, createTimeSeriesTemplateWithoutDatabaseLabel())
+		expectedErr := errors.NewMissingDatabaseWithWriteError("", createTimeSeriesTemplate())
 		assert.Equal(t, err, expectedErr)
 	})
 
@@ -845,127 +671,15 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:   nil,
-			databaseLabel: mockDatabaseLabel,
-			tableLabel:    mockTableLabel,
+			defaultDataBase: mockDatabaseName,
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
 		req := createNewRequestTemplate()
-		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplateWithoutTableLabel())
+		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplate())
 
 		err := c.writeClient.Write(req, mockCredentials)
-		expectedErr := errors.NewMissingTableWithWriteError(mockTableLabel, createTimeSeriesTemplateWithoutTableLabel())
+		expectedErr := errors.NewMissingTableWithWriteError("", createTimeSeriesTemplate())
 		assert.Equal(t, err, expectedErr)
-	})
-
-	t.Run("500 error code from multi-destination", func(t *testing.T) {
-		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
-
-		internalServerError := &timestreamwrite.InternalServerException{
-			RespMetadata: protocol.ResponseMetadata{StatusCode: 500},
-		}
-
-		mockTimestreamWriteClient.On("WriteRecords", createNewWriteRecordsInputTemplate()).Return(&timestreamwrite.WriteRecordsOutput{}, internalServerError)
-
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
-			return mockTimestreamWriteClient, nil
-		}
-
-		c := &Client{
-			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
-			defaultDataBase: mockDatabaseName,
-			defaultTable:    mockTableName,
-		}
-		c.writeClient = createNewWriteClientTemplate(c)
-
-		input := createNewRequestTemplate()
-
-		err := c.WriteClient().Write(input, mockCredentials)
-		assert.Equal(t, internalServerError, err)
-
-		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
-		mockTimestreamWriteClient.AssertExpectations(t)
-	})
-
-	t.Run("400 error code before 500 from multi-destination", func(t *testing.T) {
-		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
-
-		inputDiffDst := createNewWriteRecordsInputTemplate()
-		inputDiffDst.DatabaseName = aws.String(mockDatabaseName2)
-		inputDiffDst.TableName = aws.String(mockTableName2)
-
-		validationError := &timestreamwrite.ValidationException{
-			RespMetadata: protocol.ResponseMetadata{StatusCode: 400},
-		}
-		internalServerError := &timestreamwrite.InternalServerException{
-			RespMetadata: protocol.ResponseMetadata{StatusCode: 500},
-		}
-
-		mockTimestreamWriteClient.On("WriteRecords", createNewWriteRecordsInputTemplate()).Return(&timestreamwrite.WriteRecordsOutput{}, validationError)
-		mockTimestreamWriteClient.On("WriteRecords", inputDiffDst).Return(&timestreamwrite.WriteRecordsOutput{}, internalServerError)
-
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
-			return mockTimestreamWriteClient, nil
-		}
-
-		c := &Client{
-			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
-			defaultDataBase: mockDatabaseName,
-			defaultTable:    mockTableName,
-		}
-		c.writeClient = createNewWriteClientTemplate(c)
-
-		input := createNewRequestTemplate()
-		input.Timeseries = append(input.Timeseries, createTimeSeriesTemplateWithDifferentDestination())
-
-		err := c.WriteClient().Write(input, mockCredentials)
-		assert.Equal(t, internalServerError, err)
-
-		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 2)
-		mockTimestreamWriteClient.AssertExpectations(t)
-	})
-
-	t.Run("500 error code before 400 from multi-destination", func(t *testing.T) {
-		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
-
-		inputDiffDst := createNewWriteRecordsInputTemplate()
-		inputDiffDst.DatabaseName = aws.String(mockDatabaseName2)
-		inputDiffDst.TableName = aws.String(mockTableName2)
-
-		validationError := &timestreamwrite.ValidationException{
-			RespMetadata: protocol.ResponseMetadata{StatusCode: 400},
-		}
-		internalServerError := &timestreamwrite.InternalServerException{
-			RespMetadata: protocol.ResponseMetadata{StatusCode: 500},
-		}
-
-		mockTimestreamWriteClient.On("WriteRecords", createNewWriteRecordsInputTemplate()).Return(&timestreamwrite.WriteRecordsOutput{}, internalServerError)
-		mockTimestreamWriteClient.On("WriteRecords", inputDiffDst).Return(&timestreamwrite.WriteRecordsOutput{}, validationError)
-
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
-			return mockTimestreamWriteClient, nil
-		}
-
-		c := &Client{
-			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
-			defaultDataBase: mockDatabaseName,
-			defaultTable:    mockTableName,
-		}
-		c.writeClient = createNewWriteClientTemplate(c)
-
-		input := createNewRequestTemplate()
-		input.Timeseries = append(input.Timeseries, createTimeSeriesTemplateWithDifferentDestination())
-
-		err := c.WriteClient().Write(input, mockCredentials)
-		assert.Equal(t, internalServerError, err)
-
-		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 2)
-		mockTimestreamWriteClient.AssertExpectations(t)
 	})
 
 	t.Run("error from convertToRecords due to missing ingestion database destination", func(t *testing.T) {
@@ -977,8 +691,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:   nil,
-			databaseLabel: mockDatabaseLabel,
-			tableLabel:    mockTableLabel,
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
 
@@ -991,10 +703,6 @@ func TestWriteClientWrite(t *testing.T) {
 			{
 				Name:  "label_1",
 				Value: "value_1",
-			},
-			{
-				Name:  mockTableLabel,
-				Value: mockTableName,
 			},
 		}
 
@@ -1013,8 +721,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:   nil,
-			databaseLabel: mockDatabaseLabel,
-			tableLabel:    mockTableLabel,
+			defaultDataBase: mockDatabaseName,
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
 
@@ -1027,10 +734,6 @@ func TestWriteClientWrite(t *testing.T) {
 			{
 				Name:  "label_1",
 				Value: "value_1",
-			},
-			{
-				Name:  mockDatabaseLabel,
-				Value: mockDatabaseName,
 			},
 		}
 
@@ -1061,8 +764,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -1091,8 +792,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -1115,8 +814,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -1140,8 +837,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -1165,8 +860,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -1194,8 +887,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -1223,8 +914,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -1248,8 +937,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -1273,8 +960,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -1298,8 +983,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -1325,8 +1008,6 @@ func TestWriteClientWrite(t *testing.T) {
 
 		c := &Client{
 			queryClient:     nil,
-			databaseLabel:   mockDatabaseLabel,
-			tableLabel:      mockTableLabel,
 			defaultDataBase: mockDatabaseName,
 			defaultTable:    mockTableName,
 		}
@@ -1374,14 +1055,6 @@ func createTimeSeriesTemplate() *prompb.TimeSeries {
 				Name:  "label_1",
 				Value: "value_1",
 			},
-			{
-				Name:  mockDatabaseLabel,
-				Value: mockDatabaseName,
-			},
-			{
-				Name:  mockTableLabel,
-				Value: mockTableName,
-			},
 		},
 		Samples: []prompb.Sample{
 			{
@@ -1394,80 +1067,7 @@ func createTimeSeriesTemplate() *prompb.TimeSeries {
 
 // createNewRequestTemplate creates a template of prompb.WriteRequest pointer for unit tests.
 func createNewRequestTemplateWithoutMapping() *prompb.WriteRequest {
-	return &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{createTimeSeriesTemplateWithoutMapping()}}
-}
-
-// createTimeSeriesTemplate creates a new TimeSeries object with no mapping Labels and Samples.
-func createTimeSeriesTemplateWithoutMapping() *prompb.TimeSeries {
-	return &prompb.TimeSeries{
-		Labels: []*prompb.Label{
-			{
-				Name:  model.MetricNameLabel,
-				Value: metricName,
-			},
-			{
-				Name:  "label_1",
-				Value: "value_1",
-			},
-		},
-		Samples: []prompb.Sample{
-			{
-				Timestamp: mockUnixTime,
-				Value:     measureValue,
-			},
-		},
-	}
-}
-
-// createTimeSeriesTemplateWithoutDatabaseLabelAndTableLabel creates a default template without database label and table label.
-func createTimeSeriesTemplateWithoutDatabaseLabelAndTableLabel() *prompb.TimeSeries {
-	series := createTimeSeriesTemplate()
-	series.Labels = series.Labels[:2]
-	return series
-}
-
-// createTimeSeriesTemplateWithoutDatabaseLabel creates a default template without database label.
-func createTimeSeriesTemplateWithoutDatabaseLabel() *prompb.TimeSeries {
-	series := createTimeSeriesTemplate()
-	series.Labels = append(series.Labels[:2], series.Labels[3:]...)
-	return series
-}
-
-// createTimeSeriesTemplateWithoutTableLabel creates a default template without table label.
-func createTimeSeriesTemplateWithoutTableLabel() *prompb.TimeSeries {
-	series := createTimeSeriesTemplate()
-	series.Labels = series.Labels[:3]
-	return series
-}
-
-// createTimeSeriesTemplateWithDifferentDestination creates a new TimeSeries object with default Labels and Samples with a different destination than createTimeSeriesTemplate.
-func createTimeSeriesTemplateWithDifferentDestination() *prompb.TimeSeries {
-	return &prompb.TimeSeries{
-		Labels: []*prompb.Label{
-			{
-				Name:  model.MetricNameLabel,
-				Value: metricName,
-			},
-			{
-				Name:  "label_1",
-				Value: "value_1",
-			},
-			{
-				Name:  mockDatabaseLabel,
-				Value: mockDatabaseName2,
-			},
-			{
-				Name:  mockTableLabel,
-				Value: mockTableName2,
-			},
-		},
-		Samples: []prompb.Sample{
-			{
-				Timestamp: mockUnixTime,
-				Value:     measureValue,
-			},
-		},
-	}
+	return &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{createTimeSeriesTemplate()}}
 }
 
 // createNewRecordTemplate creates a template of timestreamwrite.Record pointer for unit tests.

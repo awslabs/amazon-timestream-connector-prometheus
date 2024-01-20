@@ -58,36 +58,34 @@ func TestMain(m *testing.M) {
 
 func TestWriteClient(t *testing.T) {
 	req := &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{
-		createTimeSeriesTemplate(database, table),
+		createTimeSeriesTemplate(),
 	}}
 
-	tsLongMetric := createTimeSeriesTemplate(database, table)
+	tsLongMetric := createTimeSeriesTemplate()
 	tsLongMetric.Labels[0].Value = "a_very_long_long_long_long_long_test_metric_that_will_be_over_sixty_bytes"
 	reqLongMetric := &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{
 		tsLongMetric,
 	}}
 
-	tsLongLabel := createTimeSeriesTemplate(database, table)
-	tsLongLabel.Labels[3].Name = "a_very_long_long_long_long_long_label_name_that_will_be_over_sixty_bytes"
+	tsLongLabel := createTimeSeriesTemplate()
+	tsLongLabel.Labels[1].Name = "a_very_long_long_long_long_long_label_name_that_will_be_over_sixty_bytes"
 	reqLongLabel := &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{
 		tsLongMetric,
 	}}
 
-	// This time series has multiple destinations and contains 100 samples to each destination.
 	var timeSeriesBatch []*prompb.TimeSeries
 	for i := 0; i < numRecords; i++ {
-		timeSeriesBatch = append(timeSeriesBatch, createTimeSeriesTemplate(database2, table2))
-		timeSeriesBatch = append(timeSeriesBatch, createTimeSeriesTemplate(database, table))
+		timeSeriesBatch = append(timeSeriesBatch, createTimeSeriesTemplate())
 	}
 	reqBatch := &prompb.WriteRequest{Timeseries: timeSeriesBatch}
 
-	timeSeriesBatchFail := append(timeSeriesBatch, createTimeSeriesTemplate(database2, table2))
-	timeSeriesBatchFail = append(timeSeriesBatchFail, createTimeSeriesTemplate(database, table))
+	timeSeriesBatchFail := append(timeSeriesBatch, createTimeSeriesTemplate())
+	timeSeriesBatchFail = append(timeSeriesBatchFail, createTimeSeriesTemplate())
 	reqBatchFail := &prompb.WriteRequest{Timeseries: timeSeriesBatchFail}
 
 	awsConfigs := &aws.Config{Region: aws.String(region)}
-	clientEnableFailOnLongLabelName := createClient(t, logger, databaseLabel, tableLabel, database, table, awsConfigs, true, false)
-	clientDisableFailOnLongLabelName := createClient(t, logger, databaseLabel, tableLabel, database, table, awsConfigs, false, false)
+	clientEnableFailOnLongLabelName := createClient(t, logger, database, table, awsConfigs, true, false)
+	clientDisableFailOnLongLabelName := createClient(t, logger, database, table, awsConfigs, false, false)
 
 	type testCase []struct {
 		testName    string
@@ -99,7 +97,7 @@ func TestWriteClient(t *testing.T) {
 		{"write normal request", req, awsCredentials},
 		{"write request with long metric name", reqLongMetric, awsCredentials},
 		{"write request with long label value", reqLongLabel, awsCredentials},
-		{"write request with multi-destination and 100 samples per destination per request", reqBatch, awsCredentials},
+		{"write request with 100 samples per request", reqBatch, awsCredentials},
 	}
 	for _, test := range successTestCase {
 		t.Run(test.testName, func(t *testing.T) {
@@ -111,7 +109,6 @@ func TestWriteClient(t *testing.T) {
 	invalidTestCase := testCase{
 		{"write request with failing long metric name", reqLongMetric, awsCredentials},
 		{"write request with failing long label value", reqLongLabel, awsCredentials},
-		{"write request with multi-destination and more than 100 samples per destination", reqBatchFail, awsCredentials},
 		{"write request with no AWS credentials", reqBatchFail, emptyCredentials},
 		{"write request with invalid AWS credentials", reqBatchFail, invalidCredentials},
 	}
@@ -135,8 +132,6 @@ func TestQueryClient(t *testing.T) {
 				Matchers: []*prompb.LabelMatcher{
 					createLabelMatcher(prompb.LabelMatcher_EQ, model.MetricNameLabel, queryMetricName),
 					createLabelMatcher(prompb.LabelMatcher_RE, model.JobLabel, invalidRegex),
-					createLabelMatcher(prompb.LabelMatcher_EQ, databaseLabel, database),
-					createLabelMatcher(prompb.LabelMatcher_EQ, tableLabel, table),
 				},
 				Hints: createReadHints(),
 			},
@@ -150,8 +145,6 @@ func TestQueryClient(t *testing.T) {
 				EndTimestampMs:   endUnix,
 				Matchers: []*prompb.LabelMatcher{
 					createLabelMatcher(invalidMatcher, model.MetricNameLabel, queryMetricName),
-					createLabelMatcher(prompb.LabelMatcher_EQ, databaseLabel, database),
-					createLabelMatcher(prompb.LabelMatcher_EQ, tableLabel, table),
 				},
 				Hints: createReadHints(),
 			},
@@ -159,7 +152,7 @@ func TestQueryClient(t *testing.T) {
 	}
 
 	awsConfigs := &aws.Config{Region: aws.String(region)}
-	clientDisableFailOnLongLabelName := createClient(t, logger, databaseLabel, tableLabel, database, table, awsConfigs, false, false)
+	clientDisableFailOnLongLabelName := createClient(t, logger, database, table, awsConfigs, false, false)
 
 	err := clientDisableFailOnLongLabelName.WriteClient().Write(writeReq, awsCredentials)
 	assert.Nil(t, err)
@@ -200,21 +193,13 @@ func randomTimestamp() int64 {
 }
 
 // createTimeSeriesTemplate creates a new TimeSeries object with default Labels and Samples.
-func createTimeSeriesTemplate(database string, table string) *prompb.TimeSeries {
+func createTimeSeriesTemplate() *prompb.TimeSeries {
 	randomTime := randomTimestamp()
 	return &prompb.TimeSeries{
 		Labels: []*prompb.Label{
 			{
 				Name:  model.MetricNameLabel,
 				Value: writeMetricName,
-			},
-			{
-				Name:  databaseLabel,
-				Value: database,
-			},
-			{
-				Name:  tableLabel,
-				Value: table,
 			},
 			{
 				Name:  "label_1",
@@ -254,8 +239,8 @@ func createReadHints() *prompb.ReadHints {
 }
 
 // createClient creates a new Timestream client containing a Timestream query client and a Timestream write client.
-func createClient(t *testing.T, logger log.Logger, databaseLabel, tableLabel, database, table string, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) *timestream.Client {
-	client := timestream.NewBaseClient(databaseLabel, tableLabel, database, table)
+func createClient(t *testing.T, logger log.Logger, database, table string, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) *timestream.Client {
+	client := timestream.NewBaseClient(database, table)
 	client.NewQueryClient(logger, configs)
 
 	configs.MaxRetries = aws.Int(awsClient.DefaultRetryerMaxNumRetries)
@@ -271,14 +256,6 @@ func createWriteRequest() *prompb.WriteRequest {
 				{
 					Name:  model.MetricNameLabel,
 					Value: queryMetricName,
-				},
-				{
-					Name:  databaseLabel,
-					Value: database,
-				},
-				{
-					Name:  tableLabel,
-					Value: table,
 				},
 				{
 					Name:  model.JobLabel,
@@ -305,8 +282,6 @@ func createValidReadRequest() (*prompb.ReadRequest, *prompb.ReadResponse) {
 				EndTimestampMs:   endUnix,
 				Matchers: []*prompb.LabelMatcher{
 					createLabelMatcher(prompb.LabelMatcher_EQ, model.MetricNameLabel, queryMetricName),
-					createLabelMatcher(prompb.LabelMatcher_EQ, databaseLabel, database),
-					createLabelMatcher(prompb.LabelMatcher_EQ, tableLabel, table),
 				},
 				Hints: &prompb.ReadHints{
 					StepMs:  0,

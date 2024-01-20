@@ -117,17 +117,13 @@ type WriteClient struct {
 type Client struct {
 	queryClient     *QueryClient
 	writeClient     *WriteClient
-	databaseLabel   string
-	tableLabel      string
 	defaultDataBase string
 	defaultTable    string
 }
 
 // NewBaseClient creates a Timestream Client object with the ingestion destination labels.
-func NewBaseClient(databaseLabel, tableLabel, defaultDataBase, defaultTable string) *Client {
+func NewBaseClient(defaultDataBase, defaultTable string) *Client {
 	client := &Client{
-		databaseLabel:   databaseLabel,
-		tableLabel:      tableLabel,
 		defaultDataBase: defaultDataBase,
 		defaultTable:    defaultTable,
 	}
@@ -347,30 +343,17 @@ func processTimeSeries(wc *WriteClient, operationOnLongMetrics longMetricsOperat
 
 		metricLabels, measureValueName := convertToMap(timeSeries.Labels)
 
-		if len(wc.client.databaseLabel) == 0 || len(wc.client.tableLabel) == 0 {
-			databaseName = wc.client.defaultDataBase
-			tableName = wc.client.defaultTable
-		} else {
-			databaseName = metricLabels[wc.client.databaseLabel]
-			tableName = metricLabels[wc.client.tableLabel]
+		databaseName = wc.client.defaultDataBase
+		tableName = wc.client.defaultTable
 
-			if len(databaseName) == 0 && len(wc.client.defaultDataBase) == 0 {
-				err = errors.NewMissingDatabaseWithWriteError(wc.client.databaseLabel, timeSeries)
-				return nil, err
-			} else if len(databaseName) == 0 {
-				databaseName = wc.client.defaultDataBase
-			} else {
-				delete(metricLabels, wc.client.databaseLabel)
-			}
+		if len(databaseName) == 0 {
+			err = errors.NewMissingDatabaseWithWriteError(wc.client.defaultDataBase, timeSeries)
+			return nil, err
+		}
 
-			if len(tableName) == 0 && len(wc.client.defaultTable) == 0 {
-				err = errors.NewMissingTableWithWriteError(wc.client.tableLabel, timeSeries)
-				return nil, err
-			} else if len(tableName) == 0 {
-				tableName = wc.client.defaultTable
-			} else {
-				delete(metricLabels, wc.client.tableLabel)
-			}
+		if len(tableName) == 0 {
+			err = errors.NewMissingTableWithWriteError(wc.client.defaultTable, timeSeries)
+			return nil, err
 		}
 
 		operation, err = operationOnLongMetrics(measureValueName)
@@ -517,18 +500,10 @@ func (qc *QueryClient) buildCommands(queries []*prompb.Query) ([]*timestreamquer
 	var timestreamQueries []*timestreamquery.QueryInput
 	var isRelatedToRegex = false
 	for _, query := range queries {
-		var tableName string
-		var databaseName string
 		var matcherName string
 		var matchers []string
 		for _, matcher := range query.Matchers {
 			switch matcher.Name {
-			case qc.client.tableLabel:
-				tableName = matcher.Value
-				continue
-			case qc.client.databaseLabel:
-				databaseName = matcher.Value
-				continue
 			case model.MetricNameLabel:
 				matcherName = measureNameColumnName
 			default:
@@ -553,20 +528,16 @@ func (qc *QueryClient) buildCommands(queries []*prompb.Query) ([]*timestreamquer
 			}
 		}
 
-		if len(databaseName) == 0 && len(qc.client.defaultDataBase) == 0 {
-			err := errors.NewMissingDatabaseWithQueryError(qc.client.databaseLabel)
-			LogError(qc.logger, "The database name must be provided in the PromQL's label matchers, where the label name must match the value specified through --database-label flag.", err)
+		if len(qc.client.defaultDataBase) == 0 {
+			err := errors.NewMissingDatabaseError(qc.client.defaultDataBase)
+			LogError(qc.logger, "The database name must be set through the --default-database flag.", err)
 			return nil, isRelatedToRegex, err
-		} else if len(databaseName) == 0 {
-			databaseName = qc.client.defaultDataBase
 		}
 
-		if len(tableName) == 0 && len(qc.client.defaultTable) == 0 {
-			err := errors.NewMissingTableWithQueryError(qc.client.tableLabel)
-			LogError(qc.logger, "The table name must be provided in the PromQL's label matchers, where the label name must match the value specified through --database-label flag.", err)
+		if len(qc.client.defaultTable) == 0 {
+			err := errors.NewMissingTableError(qc.client.defaultTable)
+			LogError(qc.logger, "The table name must set through the --default-table flag.", err)
 			return nil, isRelatedToRegex, err
-		} else if len(tableName) == 0 {
-			tableName = qc.client.defaultTable
 		}
 
 		if query.GetHints() != nil {
@@ -576,7 +547,7 @@ func (qc *QueryClient) buildCommands(queries []*prompb.Query) ([]*timestreamquer
 		}
 
 		timestreamQueries = append(timestreamQueries, &timestreamquery.QueryInput{
-			QueryString: aws.String(fmt.Sprintf("SELECT * FROM %s.%s WHERE %v", databaseName, tableName, strings.Join(matchers, " AND "))),
+			QueryString: aws.String(fmt.Sprintf("SELECT * FROM %s.%s WHERE %v", qc.client.defaultDataBase, qc.client.defaultTable, strings.Join(matchers, " AND "))),
 		})
 	}
 
