@@ -46,7 +46,7 @@ const (
 
 var (
 	containerIDs  []string
-	connectorCMDs = []string{"--database-label=timestreamDatabase", "--table-label=timestreamTable", "--log.level=debug"}
+	connectorCMDs = []string{"--default-database=timestreamDatabase", "--default-table=timestreamTable", "--log.level=debug"}
 	headers       = []string{"PromQL", "Read Response"}
 )
 
