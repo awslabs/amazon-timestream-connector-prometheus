@@ -635,7 +635,7 @@ User-Agent: Prometheus Connector/<version> aws-sdk-go/<version> (go<version>; <o
 
 ## Building the Docker Image
 1. Navigate to the repository’s root directory on a command-line interface.
-2. Run the following command to build the image: `docker build . -t timestream-prometheus-connector-docker`.
+2. Run the following command to build the image: `docker buildx build . -t timestream-prometheus-connector-docker`.
 
 ## Creating Self-signed TLS Certificates
 
