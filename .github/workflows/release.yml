@@ -40,6 +40,7 @@ jobs:
           curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
           sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu bionic stable"
           sudo apt-get install --assume-yes docker-ce docker-ce-cli containerd.io
+          sudo apt-get install -y hub
       - name: Build docker image
         run: |
           docker build . -t timestream-prometheus-connector-docker
