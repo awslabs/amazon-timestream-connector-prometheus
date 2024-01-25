@@ -82,13 +82,11 @@ type connectionConfig struct {
 	clientConfig              *clientConfig
 	defaultDatabase           string
 	defaultTable              string
-	databaseLabel             string
 	enableLogging             bool
 	failOnLongMetricLabelName bool
 	failOnInvalidSample       bool
 	listenAddr                string
 	promlogConfig             promlog.Config
-	tableLabel                string
 	telemetryPath             string
 	maxRetries                int
 	certificate               string
@@ -111,7 +109,7 @@ func main() {
 		awsQueryConfigs := cfg.buildAWSConfig()
 		awsWriteConfigs := cfg.buildAWSConfig()
 
-		timestreamClient := timestream.NewBaseClient(cfg.databaseLabel, cfg.tableLabel, cfg.defaultDatabase, cfg.defaultTable)
+		timestreamClient := timestream.NewBaseClient(cfg.defaultDatabase, cfg.defaultTable)
 
 		awsQueryConfigs.MaxRetries = aws.Int(cfg.maxRetries)
 		timestreamClient.NewQueryClient(logger, awsQueryConfigs)
@@ -136,8 +134,7 @@ func main() {
 
 // lambdaHandler receives Prometheus read or write requests sent by API Gateway.
 func lambdaHandler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	if (len(os.Getenv(defaultDatabaseConfig.envFlag)) == 0 || len(os.Getenv(defaultTableConfig.envFlag)) == 0) &&
-		(len(os.Getenv(databaseLabelConfig.envFlag)) == 0 || len(os.Getenv(tableLabelConfig.envFlag)) == 0) {
+	if (len(os.Getenv(defaultDatabaseConfig.envFlag)) == 0 || len(os.Getenv(defaultTableConfig.envFlag)) == 0) {
 		return createErrorResponse(errors.NewMissingDestinationError().(*errors.MissingDestinationError).Message())
 	}
 
@@ -154,7 +151,7 @@ func lambdaHandler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyRes
 	}
 
 	awsConfigs := cfg.buildAWSConfig()
-	timestreamClient := timestream.NewBaseClient(cfg.databaseLabel, cfg.tableLabel, cfg.defaultDatabase, cfg.defaultTable)
+	timestreamClient := timestream.NewBaseClient(cfg.defaultDatabase, cfg.defaultTable)
 
 	requestBody, err := base64.StdEncoding.DecodeString(req.Body)
 	if err != nil {
@@ -328,8 +325,6 @@ func parseEnvironmentVariables() (*connectionConfig, error) {
 	}
 
 	cfg.clientConfig.region = getOrDefault(regionConfig)
-	cfg.databaseLabel = getOrDefault(databaseLabelConfig)
-	cfg.tableLabel = getOrDefault(tableLabelConfig)
 	cfg.defaultDatabase = getOrDefault(defaultDatabaseConfig)
 	cfg.defaultTable = getOrDefault(defaultTableConfig)
 
@@ -371,8 +366,6 @@ func parseFlags() *connectionConfig {
 	a.Flag(maxRetriesConfig.flag, "The maximum number of times the read request will be retried for failures. Default to 3.").Default(maxRetriesConfig.defaultValue).IntVar(&cfg.maxRetries)
 	a.Flag(defaultDatabaseConfig.flag, "The Prometheus label containing the database name for data ingestion.").Default(defaultDatabaseConfig.defaultValue).StringVar(&cfg.defaultDatabase)
 	a.Flag(defaultTableConfig.flag, "The Prometheus label containing the table name for data ingestion.").Default(defaultTableConfig.defaultValue).StringVar(&cfg.defaultTable)
-	a.Flag(databaseLabelConfig.flag, "The Prometheus label containing the database name for data ingestion.").Default(databaseLabelConfig.defaultValue).StringVar(&cfg.databaseLabel)
-	a.Flag(tableLabelConfig.flag, "The Prometheus label containing the table name for data ingestion.").Default(tableLabelConfig.defaultValue).StringVar(&cfg.tableLabel)
 	a.Flag(listenAddrConfig.flag, "Address to listen on for web endpoints.").Default(listenAddrConfig.defaultValue).StringVar(&cfg.listenAddr)
 	a.Flag(telemetryPathConfig.flag, "Address to listen on for web endpoints.").Default(telemetryPathConfig.defaultValue).StringVar(&cfg.telemetryPath)
 	a.Flag(failOnLabelConfig.flag, "Enables or disables the option to halt the program immediately when a Prometheus Label name exceeds 256 bytes. Default to 'false'.").
