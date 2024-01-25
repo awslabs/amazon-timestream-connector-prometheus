@@ -38,17 +38,6 @@ remote_write:
       username: accessKey
       password: secretAccessKey
 
-    write_relabel_configs:
-      # Configure ingestion destination.
-      - source_labels: ["__name__"]
-        regex: .*
-        replacement: exampleDatabase
-        target_label: PrometheusDatabaseLabel
-      - source_labels: ["__name__"]
-        regex: .*
-        replacement: exampleTable
-        target_label: PrometheusTableLabel
-
 remote_read:
   - url: "http://localhost:9201/read"
 
