@@ -43,22 +43,24 @@ This getting started guide defines the following terms:
 
 ### Create a database and table on Amazon Timestream
 
+> **NOTE:** Replace the <*region*> value with the deployment region.
+
 1. Create a database called `prometheusDatabase` by running the following command in a command-line interface:
 
    ```shell
-   aws timestream-write create-database --database-name prometheusDatabase
+   aws timestream-write create-database --database-name prometheusDatabase --region <region>
    ```
 
 2. Create a table called `prometheusMetricsTable` within `prometheusDatabase` with the following command:
 
    ```shell
-   aws timestream-write create-table --database-name prometheusDatabase --table-name prometheusMetricsTable
+   aws timestream-write create-table --database-name prometheusDatabase --table-name prometheusMetricsTable --region <region>
    ```
 
 3. Run the following `describe-table` command to ensure that the database and table creation succeeded:
 
    ```shell
-   aws timestream-write describe-table --database-name prometheusDatabase --table-name prometheusMetricsTable
+   aws timestream-write describe-table --database-name prometheusDatabase --table-name prometheusMetricsTable --region <region>
    ```
 
 ## Configure Prometheus Connector
@@ -174,6 +176,8 @@ It is recommended to enable TLS encryption between Prometheus and the Prometheus
 
 4. Add the following configuration to the end of `prometheus.yml`:
 
+> **NOTE:** All configuration options are *case-sensitive*, and *session_token* authentication parameter is not supported for MFA authenticated AWS users.
+
    ```
    remote_write:
      - url: "http://localhost:9201/write"
@@ -216,6 +220,8 @@ It is recommended to enable TLS encryption between Prometheus and the Prometheus
 It is recommended to secure the Prometheus requests with TLS encryption. This can be achieved by specifying the certificate authority file the `tls_config` section for Prometheus' remote read and remote write configuration. To generate self-signed certificates during development see the [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates) section.
 
 Here is an example of `remote_write` and `remote_read` configuration with TLS, where `RootCA.pem` is within the same directory as the Prometheus configuration file:
+
+> **NOTE:** All configuration options are *case-sensitive*, and *session_token* authentication parameter is not supported for MFA authenticated AWS users.
 
 ```yaml
 remote_write:
