@@ -145,8 +145,6 @@ To view the full set of `sam deploy` options see the [sam deploy documentation](
 
 ## Configuration
 
-> **NOTE:** All configuration options are *case-sensitive*.
-
 ### Configure Prometheus
 
 To let the Lambda function know which database/table destination is for a Prometheus time series,
@@ -155,11 +153,9 @@ two additional labels need to be added in every Prometheus time series through [
 
 2. Replace the `InvokeWriteURL` and `InvokeReadURL` with the API Gateway URLs from deployment, and provide the appropriate IAM credentials in `basic_auth` before adding the following sections to the configuration file:
 
-```yaml
-global:
-  scrape_interval:    60s
-  evaluation_interval: 60s
+> **NOTE:** All configuration options are *case-sensitive*, and *session_token* authentication parameter is not supported for MFA authenticated AWS users.
 
+```yaml
 scrape_configs:
   - job_name: 'prometheus'
     scrape_interval:    15s
@@ -186,6 +182,13 @@ remote_read:
   basic_auth:
       username: accessKey
       password_file: passwordFile
+```
+
+The *password_file* path must be the absolute path for the file, and the password file must contain only the value for the *aws_secret_access_key*.
+
+The *url* values for *remote_read* and *remote_write* will be outputs from the cloudformation deployment. See the following exmaple for a remote write url:
+```
+url: "https://foo9l30.execute-api.us-east-1.amazonaws.com/dev/write"
 ```
 
 ### Start Prometheus
@@ -235,6 +238,8 @@ The user **deploying** this project **must** have the following permissions list
 [sns](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonsns.html#amazonsns-actions-as-permissions)
 [iam](https://docs.aws.amazon.com/service-authorization/latest/reference/list_awsidentityandaccessmanagementiam.html#awsidentityandaccessmanagementiam-actions-as-permissions)
 
+
+> **NOTE** - This policy is too long to be added inline during user creation, and must be created as a policy and attached to the user instead.
 
 ```json
 {
