@@ -61,6 +61,8 @@ To configure Prometheus to read and write to remote storage, configure the `remo
 
 2. Configure the basic authentication header for Prometheus read and write requests with valid IAM credentials.
 
+> **NOTE:** All configuration options are *case-sensitive*, and *session_token* authentication parameter is not supported for MFA authenticated AWS users.
+
     ```yaml
     basic_auth:
       username: accessKey
@@ -72,14 +74,18 @@ To configure Prometheus to read and write to remote storage, configure the `remo
     ```yaml
     basic_auth:
       username: accessKey
-      password_file: credentials/secretAccessKey.txt
+      password_file: /Users/user/Desktop/credentials/secretAccessKey.txt
     ```
 
-    >  **NOTE**: As a security best practice, it is recommended to regularly [rotate IAM user access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html#Using_RotateAccessKey).
+The *password_file* path must be the absolute path for the file, and the password file must contain only the value for the *aws_secret_access_key*.
+
+>  **NOTE**: As a security best practice, it is recommended to regularly [rotate IAM user access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html#Using_RotateAccessKey).
 
 3. It is recommended to secure the Prometheus requests with TLS encryption. This can be achieved by specifying the certificate authority file in the `tls_config` section for Prometheus' remote read and remote write configuration. To generate self-signed certificates during development see the [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates) section.
 
     Here is an example of `remote_write` and `remote_read` configuration with TLS, where `RootCA.pem` is within the same directory as the Prometheus configuration file:
+
+> **NOTE:** All configuration options are *case-sensitive*, and *session_token* authentication parameter is not supported for MFA authenticated AWS users.
 
     ```yaml
     remote_write:
