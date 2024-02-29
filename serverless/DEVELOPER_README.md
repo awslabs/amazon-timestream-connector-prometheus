@@ -12,11 +12,11 @@ To enable TLS encryption for production, see [Configuring mutual TLS authenticat
 ### Prerequisites
 1. [Create a Timestream database](https://docs.aws.amazon.com/timestream/latest/developerguide/console_timestream.html#console_timestream.db.using-console).
   ```shell
-   aws timestream-write create-database --database-name <exampleDatabase>
+   aws timestream-write create-database --database-name <PrometheusDatabase>
   ```
 2. [Create a Timestream table](https://docs.aws.amazon.com/timestream/latest/developerguide/console_timestream.html#console_timestream.table.using-console).
   ```shell
-   aws timestream-write create-table --database-name <exampleDatabase> --table-name <exampleTable>
+   aws timestream-write create-table --database-name <PrometheusDatabase> --table-name <PrometheusMetricsTable>
   ```
 3. Download [Prometheus](https://prometheus.io/download) (or reuse your existing Prometheus instance).
 
@@ -93,7 +93,7 @@ The steps to deploy a template are as follows:
     To override default parameter values use the `--parameter-overrides` argument and provide a string with format ParameterKey=ParameterValue. For example:
 
     ```shell
-    sam deploy --parameter-overrides "TimeoutInMillis=60000 PrometheusDatabaseLabel=<CustomDatabaseLabel>"
+    sam deploy --parameter-overrides "TimeoutInMillis=60000 DefaultDatabase=<CustomDatabase>"
     ```
     You can view the full set of parameters defined for `serverless/template.yml` below, in [AWS Lambda Configuration Options](#aws-lambda-configuration-options).
 
@@ -113,8 +113,8 @@ To view the full set of `sam deploy` options see the [sam deploy documentation](
 
    1. InvokeReadURL: The remote read URL for Prometheus.
    2. InvokeWriteURL: The remote write URL for Prometheus.
-   2. PrometheusDatabaseLabel: The [Prometheus label](https://prometheus.io/docs/practices/naming/#labels) containing the database name.
-   2. PrometheusTableLabel: The Prometheus label containing the table name.
+   2. DefaultDatabase: The database destination for queries and ingestion.
+   2. DefaultTable: The database table destination for queries and ingestion.
 
    An example of the output:
 
@@ -131,21 +131,19 @@ To view the full set of `sam deploy` options see the [sam deploy documentation](
     Description         Remote write URL for Prometheus                                                                                                                                                                                 
     Value               https://api-id.execute-api.region.amazonaws.com/prod/write                                                                                                                                                                                                                                                                                               
     
-    Key                 PrometheusDatabaseLabel                                                                                                                                                                                                  
+    Key                 DefaultDatabase                                                                                                                                                                                                  
     Description         The Prometheus label containing the database name                                                                                                                                                                                 
-    Value               PrometheusDatabaseLabel                                                                                                                                                                                                                                                                                               
+    Value               PrometheusDatabase                                                                                                                                                                                                                                                                                               
     
-    Key                 PrometheusTableLabel                                                                                                                                                                                                  
+    Key                 DefaultTable                                                                                                                                                                                                  
     Description         The Prometheus label containing the table name                                                                                                                                                                            
-    Value               PrometheusTableLabel                                                                                                                                               
+    Value               PrometheusMetricsTable                                                                                                                                               
     ------------------------------------------------------------------------------------------------------------
     ```
 
    To view all the stack information open the for more details see [Viewing AWS CloudFormation stack data and resources on the AWS Management Console](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-view-stack-data-resources.html).
 
 ## Configuration
-
-> **NOTE:** All configuration options are *case-sensitive*.
 
 ### Configure Prometheus
 
@@ -155,11 +153,9 @@ two additional labels need to be added in every Prometheus time series through [
 
 2. Replace the `InvokeWriteURL` and `InvokeReadURL` with the API Gateway URLs from deployment, and provide the appropriate IAM credentials in `basic_auth` before adding the following sections to the configuration file:
 
-```yaml
-global:
-  scrape_interval:    60s
-  evaluation_interval: 60s
+> **NOTE:** All configuration options are *case-sensitive*, and *session_token* authentication parameter is not supported for MFA authenticated AWS users.
 
+```yaml
 scrape_configs:
   - job_name: 'prometheus'
     scrape_interval:    15s
@@ -178,16 +174,6 @@ remote_write:
       username: accessKey
       password_file: passwordFile
 
-  write_relabel_configs:
-      - source_labels: ["__name__"]
-        regex: .*
-        replacement: exampleTable
-        target_label: PrometheusTableLabel
-      - source_labels: ["__name__"]
-        regex: .*
-        replacement: exampleDatabase
-        target_label: PrometheusDatabaseLabel
-
 remote_read:
 # Update the value to the InvokeReadURL returned when deploying the stack.
 - url: "InvokeReadURL"
@@ -198,8 +184,12 @@ remote_read:
       password_file: passwordFile
 ```
 
-The `write_relabel_configs` section adds two additional labels to all Prometheus time series specifying the ingestion destination for each of the time series. These two labels will only be used by the connector and will not be ingested into Timestream.
-> **NOTE:** The values specified in `target_label` must match the values specified for parameters `PrometheusDatabaseLabel` and `PrometheusTableLabel` during deployment. Users can omit the `write_relabel_configs` section if using default database and tables, see [README#Standard Configuration Options](../README.md#standard-configuration-options) for details.
+The *password_file* path must be the absolute path for the file, and the password file must contain only the value for the *aws_secret_access_key*.
+
+The *url* values for *remote_read* and *remote_write* will be outputs from the cloudformation deployment. See the following exmaple for a remote write url:
+```
+url: "https://foo9l30.execute-api.us-east-1.amazonaws.com/dev/write"
+```
 
 ### Start Prometheus
 
@@ -213,15 +203,12 @@ Follow the verification steps in [GETTING_STARTED.MD#verification](../GETTING_ST
 
 | Option                    | Description                                                  | Default Value                   |
 | ------------------------- | ------------------------------------------------------------ | ------------------------------- |
-| PrometheusDatabaseLabel   | The Prometheus label containing the database name.           | PrometheusDatabaseLabel              |
-| PrometheusTableLabel      | The Prometheus label containing the table name.              | PrometheusTableLabel                 |
+| DefaultDatabase   		| The Prometheus label containing the database name.           | PrometheusDatabase                 |
+| DefaultTable      		| The Prometheus label containing the table name.              | PrometheusMetricsTable                    |
 | MemorySize                | The memory size of the AWS Lambda function.                  | 512                             |
 | TimeoutInMillis           | The amount of time in milliseconds to run the connector on AWS Lambda before timing out. | 30000                           |
 | ReadThrottlingBurstLimit  | The number of burst read requests per second that API Gateway permits. | 1200                             |
 | WriteThrottlingBurstLimit | The number of burst write requests per second that API Gateway permits. | 1200                             |
-
-`PrometheusDatabaseLabel` and `PrometheusTableLabel` are required for multi-destination to specify where the data should be stored.
-[Configure Prometheus](#configure-prometheus) step 2 contains a configuration example for multi-destination.
 
 ### IAM Permissions Configuration Options
 
@@ -251,6 +238,8 @@ The user **deploying** this project **must** have the following permissions list
 [sns](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonsns.html#amazonsns-actions-as-permissions)
 [iam](https://docs.aws.amazon.com/service-authorization/latest/reference/list_awsidentityandaccessmanagementiam.html#awsidentityandaccessmanagementiam-actions-as-permissions)
 
+
+> **NOTE** - This policy is too long to be added inline during user creation, and must be created as a policy and attached to the user instead.
 
 ```json
 {
@@ -382,7 +371,7 @@ The user **executing** this project **must** have the following permissions list
         "timestream:WriteRecords",
         "timestream:Select"
       ],
-      "Resource": "arn:aws:timestream:<region>:<account-id>:database/exampleDatabase/table/exampleTable"
+      "Resource": "arn:aws:timestream:<region>:<account-id>:database/PrometheusDatabase/table/PrometheusMetricsTable"
     },
     {
       "Effect": "Allow",
@@ -505,7 +494,7 @@ The `TimestreamLambdaRole` is the role used by the template in order to permit A
 ## Conclusion
 
 Following the above steps you should be able to monitor your Timestream database using Prometheus. Ensure all items in the following list can be verified to ensure the guide has been completed correctly:
-- The `exampleTable` table in the `exampleDatabase` database is empty.
+- The `PrometheusMetricsTable` table in the `PrometheusDatabase` database is empty.
 - AWS CLI is configured with the correct region wishing to deploy connector to.
 - User access key id is set.
 - User secret access key is set.
@@ -514,7 +503,7 @@ Following the above steps you should be able to monitor your Timestream database
 
 Before running Prometheus, the result of the following AWS CLI command should show a `ScalarValue` of `0` within `Data`, if you have been following this document step-by-step:
 ```shell
-aws timestream-query query --query-string "SELECT count() FROM exampleDatabase.exampleTable"
+aws timestream-query query --query-string "SELECT count() FROM PrometheusDatabase.PrometheusMetricsTable"
 ```
 Next start Prometheus
 ```shell
@@ -524,13 +513,13 @@ On macOS the first time running Prometheus may fail due to the developer being u
 
 After successfully starting Prometheus and seeing no errors reported by Prometheus again run
 ```shell
-aws timestream-query query --query-string "SELECT count() FROM exampleDatabase.exampleTable"
+aws timestream-query query --query-string "SELECT count() FROM PrometheusDatabase.PrometheusMetricsTable"
 ```
-You should now see some non-zero data value within `Data`, which verifies that the Prometheus instance can ingest data into `exampleTable`.
+You should now see some non-zero data value within `Data`, which verifies that the Prometheus instance can ingest data into `PrometheusMetricsTable`.
 
 Next, in order to verify that Prometheus can make a succesful read request, add data to your table by running
 ```shell
-aws timestream-write write-records --database-name exampleDatabase --table-name exampleTable --records '[{"Dimensions":[{"DimensionValueType": "VARCHAR", "Name": "job","Value": "prometheus"},{"DimensionValueType": "VARCHAR","Name": "instance","Value": "localhost:9090"}],"MeasureName":"prometheus_temperature","MeasureValue":"98.76","TimeUnit":"SECONDS","Time":"1694446844"}]'
+aws timestream-write write-records --database-name PrometheusDatabase --table-name PrometheusMetricsTable --records '[{"Dimensions":[{"DimensionValueType": "VARCHAR", "Name": "job","Value": "prometheus"},{"DimensionValueType": "VARCHAR","Name": "instance","Value": "localhost:9090"}],"MeasureName":"prometheus_temperature","MeasureValue":"98.76","TimeUnit":"SECONDS","Time":"1694446844"}]'
 ```
 Open the Prometheus web interface (default `localhost:9090`) and within the execution bar run
 ```
@@ -549,12 +538,12 @@ And verify that data is displayed.
 
 2. Delete table
   ```shell
-  aws timestream-write delete-table --database-name <exampleDatabase> --table-name <exampleTable>
+  aws timestream-write delete-table --database-name <PrometheusDatabase> --table-name <PrometheusMetricsTable>
   ```
 
 3. Delete database
   ```shell
-  aws timestream-write delete-database --database-name <exampleDatabase>
+  aws timestream-write delete-database --database-name <PrometheusDatabase>
   ```
 
 > **NOTE:** Cleaning up resources will require additional IAM permissions added to the base required for deployment under [Deployment Permissions](#deployment-permissions)

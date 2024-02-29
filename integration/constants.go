@@ -15,8 +15,6 @@ and limitations under the License.
 package integration
 
 const (
-	databaseLabel         = "timestreamDatabaseName"
-	tableLabel            = "timestreamTableName"
 	database              = "integrationDB"
 	table                 = "integration"
 	database2             = "integrationDB2"

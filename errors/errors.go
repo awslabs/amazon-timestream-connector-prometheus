@@ -45,8 +45,8 @@ type MissingDestinationError struct {
 func NewMissingDestinationError() error {
 	base := baseConnectorError{
 		statusCode: http.StatusBadRequest,
-		errorMsg:   "no database label or table label provided",
-		message: "The environment variables database-label and table-label must be specified in the Lambda function. " +
+		errorMsg:   "no default database or default table has been set",
+		message: "The environment variables default-database and default-table must be specified in the Lambda function." +
 			labelErrorMessage,
 	}
 	return &MissingDestinationError{baseConnectorError: base}
@@ -133,11 +133,11 @@ type MissingDatabaseWithWriteError struct {
 	baseConnectorError
 }
 
-func NewMissingDatabaseWithWriteError(databaseLabel string, timeSeries *prompb.TimeSeries) error {
+func NewMissingDatabaseWithWriteError(defaultDatabase string, timeSeries *prompb.TimeSeries) error {
 	base := baseConnectorError{
 		statusCode: http.StatusBadRequest,
-		errorMsg:   fmt.Sprintf("the given database label name: %s cannot be found in the slice of Labels for the current time series %v", databaseLabel, timeSeries),
-		message: "The environment variables database-label must be specified in the Prometheus time series labels. " +
+		errorMsg:   fmt.Sprintf("the given database name: %s cannot be found for the current time series %v", defaultDatabase, timeSeries),
+		message: "The environment variables default-database must be configured for the Prometheus Connector. " +
 			labelErrorMessage,
 	}
 	return &MissingDatabaseWithWriteError{baseConnectorError: base}
@@ -147,42 +147,42 @@ type MissingTableWithWriteError struct {
 	baseConnectorError
 }
 
-func NewMissingTableWithWriteError(tableLabel string, timeSeries *prompb.TimeSeries) error {
+func NewMissingTableWithWriteError(defaultTable string, timeSeries *prompb.TimeSeries) error {
 	base := baseConnectorError{
 		statusCode: http.StatusBadRequest,
-		errorMsg:   fmt.Sprintf("the given table label name: %s cannot be found in the slice of Labels for the current time series %v", tableLabel, timeSeries),
-		message: "The environment variables table-label must be specified in the Prometheus time series labels. " +
+		errorMsg:   fmt.Sprintf("the given table name: %s cannot be found for the current time series %v", defaultTable, timeSeries),
+		message: "The environment variables default-table must be configured for the Prometheus Connector. " +
 			labelErrorMessage,
 	}
 	return &MissingTableWithWriteError{baseConnectorError: base}
 }
 
-type MissingDatabaseWithQueryError struct {
+type MissingDatabaseError struct {
 	baseConnectorError
 }
 
-func NewMissingDatabaseWithQueryError(databaseLabel string) error {
+func NewMissingDatabaseError(defaultDatabase string) error {
 	base := baseConnectorError{
 		statusCode: http.StatusBadRequest,
-		errorMsg:   fmt.Sprintf("no Timestream database is specified in the query, please provide the database in the PromQL as a label matcher {%s=\"<databaseName>\"}", databaseLabel),
-		message: "The environment variables database-label must be specified in the PromQL when sending a query request. " +
+		errorMsg:   fmt.Sprintf("the given table name: %s cannot be found. Please provide the table name with the flag default-database.", defaultDatabase),
+		message: "The environment variable default-database must be specified for the Prometheus Connector." +
 			labelErrorMessage,
 	}
-	return &MissingDatabaseWithQueryError{baseConnectorError: base}
+	return &MissingDatabaseError{baseConnectorError: base}
 }
 
-type MissingTableWithQueryError struct {
+type MissingTableError struct {
 	baseConnectorError
 }
 
-func NewMissingTableWithQueryError(tableLabel string) error {
+func NewMissingTableError(defaultTable string) error {
 	base := baseConnectorError{
 		statusCode: http.StatusBadRequest,
-		errorMsg:   fmt.Sprintf("no Timestream table is specified in the query, please provide the table in the PromQL as a label matcher {%s=\"<tableName>\"}", tableLabel),
-		message: "The environment variables table-label must be specified when sending a query request. " +
+		errorMsg:   fmt.Sprintf("the given table name: %s cannot be found. Please provide the table name with the flag default-table.", defaultTable),
+		message: "The environment variable default-table must be specified for the Prometheus Connector." +
 			labelErrorMessage,
 	}
-	return &MissingTableWithQueryError{baseConnectorError: base}
+	return &MissingTableError{baseConnectorError: base}
 }
 
 type UnknownMatcherError struct {
