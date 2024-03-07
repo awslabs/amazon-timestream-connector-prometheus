@@ -1,26 +1,31 @@
-# timestream-prometheus-connector
+# Timestream Prometheus Connector
 
 ## Overview
 
 This [serverless application](https://aws.amazon.com/serverless/) consists of the following:
-- [Amazon API Gateway](https://docs.aws.amazon.com/apigateway/latest/developerguide/welcome.html) that listens for [Prometheus remote read and write](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations) requests;
+- [Amazon API Gateway](https://docs.aws.amazon.com/apigateway/latest/developerguide/welcome.html) that listens for [Prometheus remote read and write](https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations) requests.
 - [AWS Lambda function](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html) that stores the received Prometheus metrics in [Amazon Timestream](https://docs.aws.amazon.com/timestream/latest/developerguide/what-is-timestream.html).
 
 This application is meant to be used as a getting started guide and does not configure TLS encryption between Prometheus and the API Gateway. This is not recommended to be used directly for production.
 To enable TLS encryption for production, see [Configuring mutual TLS authentication for an HTTP API](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-mutual-tls.html).
 
 ### Prerequisites
+
 1. [Create a Timestream database](https://docs.aws.amazon.com/timestream/latest/developerguide/console_timestream.html#console_timestream.db.using-console).
-  ```shell
+
+   ```shell
    aws timestream-write create-database --database-name <PrometheusDatabase>
-  ```
+   ```
+
 2. [Create a Timestream table](https://docs.aws.amazon.com/timestream/latest/developerguide/console_timestream.html#console_timestream.table.using-console).
-  ```shell
+
+   ```shell
    aws timestream-write create-table --database-name <PrometheusDatabase> --table-name <PrometheusMetricsTable>
-  ```
+   ```
+
 3. Download [Prometheus](https://prometheus.io/download) (or reuse your existing Prometheus instance).
 
-> **NOTE:** The user deploying this application must have administrative privileges due to the number of permissions required for deployment. For a detailed list of permissions see [Required Permissions](#required-permissions).
+   > **NOTE**: The user deploying this application must have administrative privileges due to the number of permissions required for deployment. For a detailed list of permissions see [Required Permissions](#required-permissions).
 
 ## Getting Started
 
@@ -33,6 +38,7 @@ To start using the Prometheus remote storage connector for Timestream, there are
 ## Deployment
 
 ### One-click Deployment
+
 Use an [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/Welcome.html) [template](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-whatis-concepts.html#cfn-concepts-templates) to create the [stack](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-whatis-concepts.html#cfn-concepts-stacks):
 
 To install the Timestream Prometheus Connector service launch the AWS CloudFormation stack on the AWS CloudFormation console by choosing one of the "Launch Stack" buttons in the following table:
@@ -104,7 +110,7 @@ The steps to deploy a template are as follows:
     ```
 
   To deploy to a specific region:
-  
+
   TBD - Lambda deployment needs region set on creation.
 
 To view the full set of `sam deploy` options see the [sam deploy documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-cli-command-reference-sam-deploy.html).
@@ -113,8 +119,8 @@ To view the full set of `sam deploy` options see the [sam deploy documentation](
 
    1. InvokeReadURL: The remote read URL for Prometheus.
    2. InvokeWriteURL: The remote write URL for Prometheus.
-   2. DefaultDatabase: The database destination for queries and ingestion.
-   2. DefaultTable: The database table destination for queries and ingestion.
+   3. DefaultDatabase: The database destination for queries and ingestion.
+   4. DefaultTable: The database table destination for queries and ingestion.
 
    An example of the output:
 
@@ -149,47 +155,49 @@ To view the full set of `sam deploy` options see the [sam deploy documentation](
 
 To let the Lambda function know which database/table destination is for a Prometheus time series,
 two additional labels need to be added in every Prometheus time series through [Prometheus relabel config](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config).
+
 1. Open the configuration file for Prometheus, the file is usually named `prometheus.yml`.
 
 2. Replace the `InvokeWriteURL` and `InvokeReadURL` with the API Gateway URLs from deployment, and provide the appropriate IAM credentials in `basic_auth` before adding the following sections to the configuration file:
 
-> **NOTE:** All configuration options are *case-sensitive*, and *session_token* authentication parameter is not supported for MFA authenticated AWS users.
+   > **NOTE**: All configuration options are *case-sensitive*, and *session_token* authentication parameter is not supported for MFA authenticated AWS users.
 
-```yaml
-scrape_configs:
-  - job_name: 'prometheus'
-    scrape_interval:    15s
+   ```yaml
+   scrape_configs:
+     - job_name: 'prometheus'
+       scrape_interval:    15s
 
-    static_configs:
-      - targets: ['localhost:9090']
+       static_configs:
+         - targets: ['localhost:9090']
 
-remote_write:
-# Update the value to the InvokeWriteURL returned when deploying the stack.
-- url: "InvokeWriteURL"
-  queue_config:
-    max_samples_per_send: 100
+   remote_write:
+   # Update the value to the InvokeWriteURL returned when deploying the stack.
+   - url: "InvokeWriteURL"
+     queue_config:
+       max_samples_per_send: 100
 
-  # Update the username and password to a valid IAM access key and secret access key.
-  basic_auth:
-      username: accessKey
-      password_file: passwordFile
+     # Update the username and password to a valid IAM access key and secret access key.
+     basic_auth:
+         username: accessKey
+         password_file: passwordFile
 
-remote_read:
-# Update the value to the InvokeReadURL returned when deploying the stack.
-- url: "InvokeReadURL"
+   remote_read:
+   # Update the value to the InvokeReadURL returned when deploying the stack.
+   - url: "InvokeReadURL"
 
-  # Update the username and password to a valid IAM access key and secret access key.
-  basic_auth:
-      username: accessKey
-      password_file: passwordFile
-```
+     # Update the username and password to a valid IAM access key and secret access key.
+     basic_auth:
+         username: accessKey
+         password_file: passwordFile
+   ```
 
-The *password_file* path must be the absolute path for the file, and the password file must contain only the value for the *aws_secret_access_key*.
+   The *password_file* path must be the absolute path for the file, and the password file must contain only the value for the *aws_secret_access_key*.
 
-The *url* values for *remote_read* and *remote_write* will be outputs from the cloudformation deployment. See the following exmaple for a remote write url:
-```
-url: "https://foo9l30.execute-api.us-east-1.amazonaws.com/dev/write"
-```
+   The *url* values for *remote_read* and *remote_write* will be outputs from the cloudformation deployment. See the following example for a remote write url:
+
+   ```yaml
+   url: "https://foo9l30.execute-api.us-east-1.amazonaws.com/dev/write"
+   ```
 
 ### Start Prometheus
 
@@ -197,7 +205,8 @@ url: "https://foo9l30.execute-api.us-east-1.amazonaws.com/dev/write"
 2. Start Prometheus. Since the remote storage options for Prometheus has been configured, Prometheus will start ingesting to Timestream through the API Gateway endpoints.
 
 ### Verification
-Follow the verification steps in [GETTING_STARTED.MD#verification](../GETTING_STARTED.md#verification).
+
+Follow the verification steps in [README.md#verification](../README.md#verification).
 
 ### AWS Lambda Configuration Options
 
@@ -221,12 +230,14 @@ Follow the verification steps in [GETTING_STARTED.MD#verification](../GETTING_ST
 | Option              | Description                        | Default Value |
 | ------------------- | ---------------------------------- | ------------- |
 | APIGatewayStageName | The stage name of the API Gateway. Stage names can contain only alphanumeric characters, hyphens, and underscores. | dev          |
+
 The default stage name `dev` may indicate the endpoint is at `development` stage.
 If the application is ready for production, set the stage name to a more appropriate value like `prod` when deploying the stack.
 
 ## Required Permissions
 
 The template assumes the user deploying the project has administrative permissions. If the user is missing any of the required permissions the deployment will fail.
+
 See [Troubleshooting](#troubleshooting) section for more details.
 
 ### Deployment Permissions
@@ -237,7 +248,6 @@ The user **deploying** this project **must** have the following permissions list
 [cloudformation](https://docs.aws.amazon.com/service-authorization/latest/reference/list_awscloudformation.html#awscloudformation-actions-as-permissions)
 [sns](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonsns.html#amazonsns-actions-as-permissions)
 [iam](https://docs.aws.amazon.com/service-authorization/latest/reference/list_awsidentityandaccessmanagementiam.html#awsidentityandaccessmanagementiam-actions-as-permissions)
-
 
 > **NOTE** - This policy is too long to be added inline during user creation, and must be created as a policy and attached to the user instead.
 
@@ -395,7 +405,7 @@ The user **executing** this project **must** have the following permissions list
 5. Remove default policy and paste the Deployment policy into the Policy Editor.
 6. Update values for `<account-id>` and `<region>` for your AWS account.
 7. Click `Next`.
-8. Enter `TimestreamPrometheusDeploymentPolicy` in the `Policy name` dialog box.
+8. Enter `TimestreamPrometheusDeploymentPolicy` in the `Policy name` dialogue box.
 9. Click `Create policy`.
 
 #### Create Execution Policy
@@ -407,7 +417,7 @@ The user **executing** this project **must** have the following permissions list
 5. Remove default policy and paste the Execution policy into the Policy Editor.
 6. Update values for `<account-id>` and `<region>` for your AWS account.
 7. Click `Next`.
-8. Enter `TimestreamPrometheusExecutionPolicy` in the `Policy name` dialog box.
+8. Enter `TimestreamPrometheusExecutionPolicy` in the `Policy name` dialogue box.
 9. Click `Create policy`.
 
 ### Create and Configure Users
@@ -417,7 +427,7 @@ The user **executing** this project **must** have the following permissions list
 1. Open the [AWS management console](https://console.aws.amazon.com/iam) for AWS IAM.
 2. Click `Users`.
 3. Click `Create User`.
-4. Enter `TimestreamPrometheusDeployment` in the `User name` dialog box.
+4. Enter `TimestreamPrometheusDeployment` in the `User name` dialogue box.
 5. Click `Next`.
 6. Click `Attach policies directly`.
 7. Search for the policy `TimestreamPrometheusDeploymentPolicy` and select the box next to the policy.
@@ -459,7 +469,7 @@ aws_secret_access_key = <Secret Access Key>
 1. Open the [AWS management console](https://console.aws.amazon.com/iam) for AWS IAM.
 2. Click `Users`.
 3. Click `Create User`.
-4. Enter `TimestreamPrometheusExecution` in the `User name` dialog box.
+4. Enter `TimestreamPrometheusExecution` in the `User name` dialogue box.
 5. Click `Next`.
 6. Click `Attach policies directly`.
 7. Search for the policy `TimestreamPrometheusExecutionPolicy` and select the box next to the policy.
@@ -478,7 +488,6 @@ aws_secret_access_key = <Secret Access Key>
 
 Store the `Access key` and `Secret access key` for later to configure Prometheus for execution.
 
-
 ## Template IAM Permissions
 
 Running the Prometheus Connector on AWS Lambda allows for a serverless workflow. This section details the [IAM](https://docs.aws.amazon.com/IAM/latest/UserGuide/introduction.html) permissions created by the template to integrate the Prometheus Connector with Amazon API Gateway and AWS Lambda.
@@ -489,7 +498,7 @@ The `LambdaExecutionPolicy` created by the template allows the lambda function t
 
 ### Template Role
 
-The `TimestreamLambdaRole` is the role used by the template in order to permit AWS lambda and APIGateway deployment. See [README#IAM Role and Policy Configuration](../README.md#iam-role-and-policy-configuration) for the json role used.
+The `TimestreamLambdaRole` is the role used by the template in order to permit AWS lambda and API Gateway deployment. See [README#IAM Role and Policy Configuration](../README.md#iam-role-and-policy-configuration) for the json role used.
 
 ## Conclusion
 
@@ -502,29 +511,39 @@ Following the above steps you should be able to monitor your Timestream database
 ### Confirming Application Functionality
 
 Before running Prometheus, the result of the following AWS CLI command should show a `ScalarValue` of `0` within `Data`, if you have been following this document step-by-step:
+
 ```shell
 aws timestream-query query --query-string "SELECT count() FROM PrometheusDatabase.PrometheusMetricsTable"
 ```
-Next start Prometheus
+
+Next, start Prometheus
+
 ```shell
 ./prometheus
 ```
+
 On macOS the first time running Prometheus may fail due to the developer being unable to be verified. To continue, you must grant Prometheus execution in `System Settings -> Privacy & Security -> Security -> "prometheus" was blocked from use because it is not from an identified developer. -> Allow Anyway`.  
 
 After successfully starting Prometheus and seeing no errors reported by Prometheus again run
+
 ```shell
 aws timestream-query query --query-string "SELECT count() FROM PrometheusDatabase.PrometheusMetricsTable"
 ```
+
 You should now see some non-zero data value within `Data`, which verifies that the Prometheus instance can ingest data into `PrometheusMetricsTable`.
 
-Next, in order to verify that Prometheus can make a succesful read request, add data to your table by running
+Next, in order to verify that Prometheus can make a successful read request, add data to your table by running
+
 ```shell
 aws timestream-write write-records --database-name PrometheusDatabase --table-name PrometheusMetricsTable --records '[{"Dimensions":[{"DimensionValueType": "VARCHAR", "Name": "job","Value": "prometheus"},{"DimensionValueType": "VARCHAR","Name": "instance","Value": "localhost:9090"}],"MeasureName":"prometheus_temperature","MeasureValue":"98.76","TimeUnit":"SECONDS","Time":"1694446844"}]'
 ```
+
 Open the Prometheus web interface (default `localhost:9090`) and within the execution bar run
+
 ```
 prometheus_temperature[15d]
 ```
+
 And verify that data is displayed.
 
 > **Note**: The time range (`15d`) must be large enough to trigger the Prometheus read from external endpoint. If the time range is too small then only local data will be read.
@@ -532,21 +551,24 @@ And verify that data is displayed.
 ### Cleanup
 
 1. Delete cloudformation stack and S3 artifacts
-  ```shell
-  sam delete --stack-name PrometheusConnector
-  ```
+
+   ```shell
+   sam delete --stack-name PrometheusConnector
+   ```
 
 2. Delete table
-  ```shell
-  aws timestream-write delete-table --database-name <PrometheusDatabase> --table-name <PrometheusMetricsTable>
-  ```
+
+   ```shell
+   aws timestream-write delete-table --database-name <PrometheusDatabase> --table-name <PrometheusMetricsTable>
+   ```
 
 3. Delete database
-  ```shell
-  aws timestream-write delete-database --database-name <PrometheusDatabase>
-  ```
 
-> **NOTE:** Cleaning up resources will require additional IAM permissions added to the base required for deployment under [Deployment Permissions](#deployment-permissions)
+   ```shell
+   aws timestream-write delete-database --database-name <PrometheusDatabase>
+   ```
+
+   > **NOTE**: Cleaning up resources will require additional IAM permissions added to the base required for deployment under [Deployment Permissions](#deployment-permissions)
 
 Required Permissions:
 - "apigateway:DELETE"
@@ -562,7 +584,6 @@ Required Permissions:
 - "cloudformation:DeleteStack"
 - "lambda:RemovePermission"
 - "lambda:DeleteFunction"
-
 
 ## Troubleshooting
 
@@ -581,13 +602,13 @@ Ensure the following:
 
    The stack will now be created with the following warning: `LambdaFunction may not have authorization defined.`
 
-This behaviour occurs because the API Gateway triggers configured for the AWS Lambda function do not have authorization defined. This is fine because authorization is done in the Prometheus Connector instead of the API Gateway.
+   This behaviour occurs because the API Gateway triggers configured for the AWS Lambda function do not have authorization defined. This is fine because authorization is done in the Prometheus Connector instead of the API Gateway.
 
 ### Role Permission Error
 
 An error occurred during deployment due to invalid permissions.
 
-Do as follows:
+Do the following:
 
 1. Ensure the user deploying the project has administrative privileges and all required deployment permissions.
 2. See all the required permissions in [Deployment Permissions](#deployment-permissions).
@@ -613,15 +634,19 @@ See the list below for parameters whose values that may result in resource confl
 ### AWS Lambda Timeout or HTTP Status 404 Not Found
 
 If the Lambda `TimeoutInMillis` parameter is too small or a PromQL query exceeds the `TimeoutInMillis` value a 
+
 ```shell
 remote_read: remote server https://api-id.execute-api.region.amazonaws.com/dev/read returned HTTP status 404 Not Found: {"message":"Not Found"}
 ``` 
+
 error could be returned. If you encounter this error first try overriding the default value for `TimeoutInMillis` (30 seconds) with a greater value using the [`--parameter-overrides` option for `sam deploy`](#aws-cli-deployment).
 
 ## Caveats
+
 This SAM template does not enable TLS encryption by default between Prometheus and the Prometheus Connector.
 
 During **development**, ensure the following:
+
 1. Regularly rotate IAM user access keys, see [Rotating access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html#Using_RotateAccessKey).
 2. Follow the [best practices](https://docs.aws.amazon.com/timestream/latest/developerguide/security_iam_id-based-policy-examples.html#security_iam_service-with-iam-policy-best-practices).
 
