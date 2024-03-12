@@ -483,7 +483,7 @@ The `TimestreamLambdaRole` is the role used by the template in order to permit A
 
 ## Conclusion
 
-Following the above steps you should be able to monitor your Timestream database using Prometheus. Ensure all items in the following list can be verified to ensure the guide has been completed correctly:
+Following the above steps you should be able to ingest and query your Prometheus data in Timestream. Ensure all items in the following list can be verified to confirm the guide has been completed correctly:
 - The `PrometheusMetricsTable` table in the `PrometheusDatabase` database is empty.
 - AWS CLI is configured with the correct region wishing to deploy connector to.
 - User access key id is set.
