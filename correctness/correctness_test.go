@@ -41,7 +41,7 @@ const (
 	prometheusConfigPath      = "config/correctness_testing.yml"
 	prometheusDockerImageName = "prom/prometheus"
 	connectorDockerImageName  = "timestream-prometheus-connector-docker"
-	connectorDockerImagePath  = "../resources/timestream-prometheus-connector-docker-image-1.1.0.tar.gz"
+	connectorDockerImagePath  = "../resources/timestream-prometheus-connector-docker-image-1.0.0.tar.gz"
 )
 
 var (
