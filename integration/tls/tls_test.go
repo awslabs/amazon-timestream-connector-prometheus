@@ -42,7 +42,7 @@ const (
 	tlsRootCAPath              = "cert/RootCA.pem"
 	tlsServerCertPath          = "cert"
 	connectorDockerImageName   = "timestream-prometheus-connector-docker"
-	connectorDockerImagePath   = "../../resources/timestream-prometheus-connector-docker-image-1.1.0.tar.gz"
+	connectorDockerImagePath   = "../../resources/timestream-prometheus-connector-docker-image-1.0.0.tar.gz"
 	defaultDatabaseCMD         = "--default-database=tlsDB"
 	defaultTableCMD            = "--default-table=tls"
 	tlsCertificateCMD          = "--tls-certificate=/root/cert/serverCertificate.crt"

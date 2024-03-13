@@ -16,6 +16,7 @@ The Prometheus Connector receives and sends time series data between Prometheus 
     - [Standard Configuration Options](#standard-configuration-options)
     - [Retry Configuration Options](#retry-configuration-options)
     - [Logger Configuration Options](#logger-configuration-options)
+  - [Relabel Long Labels](#relabel-long-labels)
   - [Authentication](#authentication)
 - [Developer Documentation](#developer-documentation)
   - [Building the Prometheus Connector from Source](#building-the-prometheus-connector-from-source)
@@ -135,16 +136,16 @@ Run the precompiled binaries with required arguments `default-database` and `def
 
 | Platform | Command                                                      |
 | -------- | ------------------------------------------------------------ |
-| Linux    | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable` |
-| macOS    | `./timestream-prometheus-connector-darwin-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable` |
-| Windows  | `timestream-prometheus-connector-windows-amd64-1.1.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable` |
+| Linux    | `./timestream-prometheus-connector-linux-amd64-1.0.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable` |
+| macOS    | `./timestream-prometheus-connector-darwin-amd64-1.0.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable` |
+| Windows  | `timestream-prometheus-connector-windows-amd64-1.0.0 --default-database=prometheusDatabase  --default-table=prometheusMetricsTable` |
 
 It is recommended to secure the Prometheus requests with TLS encryption. To enable TLS encryption:
 
 1. Specify the server certificate and the server private key through the `tls-certificate` and `tls-key` configuration options. An example for macOS is as follows:
 
    ```shell
-   ./timestream-prometheus-connector-darwin-amd64-1.1.0 \
+   ./timestream-prometheus-connector-darwin-amd64-1.0.0 \
    --default-database=prometheusDatabase \
    --default-table=prometheusMetricsTable \
    --tls-certificate=serverCertificate.crt \
@@ -172,7 +173,7 @@ Follow these steps to resolve:
 ### Run with Docker Image
 Load the Docker image by the following command:
 ```shell script
-docker load < timestream-prometheus-connector-docker-image-1.1.0.tar.gz
+docker load < timestream-prometheus-connector-docker-image-1.0.0.tar.gz
 ```
 
 - **Linux and macOS**
@@ -386,10 +387,10 @@ To provide access to this newly created role, add a permission to the current us
 7. Under the `Environment variables` section, click `edit`.
 8. Enter the key and corresponding value of environment variables, `default_database` and `default_table` are required. Here is an example:
 ![](documentation/example/environment_variable_example.PNG)
-Go to [Configuration Options](#Configuration-options) to see more information.
+Go to [Configuration Options](#configuration-options) to see more information.
 9. Scroll down to basic settings.
 10. Click `Edit`.
-11. In the `Handler` section, enter the name of the Amazon Timestream Prometheus Connector ZIP file, which will be `timestream-prometheus-connector-1.1.0`.
+11. In the `Handler` section, enter the name of the Amazon Timestream Prometheus Connector ZIP file, which will be `timestream-prometheus-connector-1.0.0`.
 12. Click `Save`.
 
 #### Create the API on Amazon API Gateway
@@ -542,28 +543,28 @@ The default-database name and default-table name are required for data ingestion
     
    | Runtime              | Command                                                                                                                                                                                             |
    | -------------------- |-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --region=us-west-2`                                              |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --region=us-west-2`                                              |
    | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={default_database=prometheusDatabase,default_table=prometheusMetricsTable,region=us-west-2}"` |
 
 2. Configure the Prometheus Connector listen for requests on an HTTPS server `https://localhost:9201` with TLS encryption.
 
    | Runtime              | Command                                                                                                                                                                                                    |
    | -------------------- |------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --tls-certificate=serverCertificate.crt --tls-key=serverPrivateKey.key` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --tls-certificate=serverCertificate.crt --tls-key=serverPrivateKey.key` |
    | AWS Lambda Function  | `N/A`                                                                                                                                                                                                      |
 
 3. Configure the Prometheus Connector to listen for Prometheus requests on `http://localhost:3080`.
 
    | Runtime              | Command                                                                                                                                                        |
    | -------------------- |----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --web.listen-address=:3080` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --web.listen-address=:3080` |
    | AWS Lambda Function  | `N/A`                                                                                                                                                          |
 
 4. Configure the Prometheus Connector to listen for Prometheus requests on `http://localhost:3080` and serve collected metrics to `http://localhost:3080/timestream-metrics`.
 
    | Runtime              | Command                                                                                                                                                                                                 |
    | -------------------- |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --web.listen-address=:3080 --web.telemetry-path=/timestream-metrics` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --web.listen-address=:3080 --web.telemetry-path=/timestream-metrics` |
    | AWS Lambda Function  | `N/A`                                                                                                                                                                                                   |
 
 ### Retry Configuration Options
@@ -580,7 +581,7 @@ Configure the Prometheus Connector to retry up to 10 times upon recoverable erro
 
 | Runtime              | Command                                                                                                                                                                                           |
 | -------------------- |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --max-retries=10`                                              |
+| Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --max-retries=10`                                              |
 | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={default_database=prometheusDatabase,default_table=prometheusMetricsTable,max_retries=10}"` |
 
 ### Logger Configuration Options
@@ -608,22 +609,54 @@ To quickly spot and resolve issues that may be caused by ignored Prometheus time
 
    | Runtime              | Command                                                                                                                                                                                                            |
    | -------------------- |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --enable-logging=false`                                                         |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --enable-logging=false`                                                         |
    | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusPrometheus Connector --environment "Variables={default_database=prometheusDatabase,default_table=prometheusMetricsTable,enable_logging=false}"` |
 
 2. Toggle the Prometheus Connector to halt on: <br />- label names exceeding the maximum length supported by Amazon Timestream;<br />- Prometheus time series with non-finite values.
 
    | Runtime              | Command                                                                                                                                                                                                                                                           |
    | -------------------- |-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --fail-on-long-label=true --fail-on-invalid-sample=true` |
+   | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --fail-on-long-label=true --fail-on-invalid-sample=true` |
    | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={default_database=prometheusDatabase,default_table=prometheusMetricsTable,fail_on_long_label=true, fail_on_invalid_sample_value=true}"`                     |
 
 3. Configure the Prometheus Connector to output the logs at debug level and in JSON format.
 
     | Runtime              | Command                                                                                                                                                                                                             |
     | -------------------- |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-    | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.1.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --log.level=debug --log.format=json`                                             |
+    | Precompiled Binaries | `./timestream-prometheus-connector-linux-amd64-1.0.0 --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --log.level=debug --log.format=json`                                             |
     | AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={default_database=prometheusDatabase,default_table=prometheusMetricsTable,log_level=debug, log_format=json}"` |
+
+## Relabel Long Labels
+
+If a Prometheus time series has a metric name exceeding the maximum supported length, the Prometheus Connector will **by default** log and ignore any of those Samples.
+
+Long metric names will be logged by the Prometheus Connector, one can use the `write_relabel_configs` in `prometheus.yml` to rename a long metric name.
+Below is an example `prometheus.yml` relabeling the long metric name `prometheus_remote_storage_read_request_duration_seconds_bucket` to `prometheus_read_request_duration_seconds_bucket`.
+
+```yaml
+global:
+  scrape_interval:    60s
+  evaluation_interval: 60s 
+
+scrape_configs:
+  - job_name: 'prometheus'
+
+    static_configs:
+    - targets: ['localhost:9090']
+
+remote_write:
+  - url: "http://localhost:9201/write"
+
+    write_relabel_configs:
+    - source_labels: ["__name__"]
+      action: replace
+      regex: prometheus_remote_storage_read_request_duration_seconds_bucket
+      replacement: prometheus_read_request_duration_seconds_bucket
+      target_label: __name__
+
+remote_read:
+  - url: "http://localhost:9201/read"
+```
 
 ## Authentication
 
@@ -820,6 +853,7 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
 
 # Troubleshooting
 ## Prometheus Connector Specific Errors
+
 1. **Error**: `LongLabelNameError`
 
    **Description**: The metric name exceeds the maximum supported length and the `fail-on-long-label` is set to `true`.
@@ -827,7 +861,7 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
    **Log Example**
 
    ```log
-   level=error ts=2020-11-06T02:01:46.753Z calleawr=utils.go:23 message="Unable to convert the received Prometheus write request to Timestream Records." 
+   level=error ts=2020-11-06T02:01:46.753Z calleawr=utils.go:23 message="Unable to convert the received Prometheus write request to Timestream Records."
    error="LongLabelNameError: metric name 'prometheus_remote_storage_read_request_duration_seconds_bucket' exceeds 60 characters, the maximum length supported by Timestream"
    ```
 
@@ -845,8 +879,8 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
    ```log
    debug ts=2020-11-06T02:29:26.760Z caller=utils.go:28 message="Timestream only accepts finite IEEE Standard 754 floating point precision. Samples with NaN, Inf and -Inf are ignored." 
    timeSeries="labels:<name:\"__name__\" value:\"prometheus_rule_evaluation_duration_seconds\" > labels:<name:\"instance\" value:\"localhost:9090\" > labels:<name:\"job\" value:\"prometheus\" > 
-   labels:<name:\"monitor\" value:\"codelab-monitor\" > labels:<name:\"quantile\" value:\"0.99\" > labels:<name:\"prometheusDatabase\" value:\"promDB\" > labels:<name:\"prometheusMetricsTable\" value:\"prom\" > 
-   samples:<value:nan timestamp:1604629766606 > " 
+   labels:<name:\"monitor\" value:\"codelab-monitor\" > labels:<name:\"quantile\" value:\"0.99\" > labels:<name:\"prometheusDatabase\" value:\"promDB\" > labels:<name:\"prometheusMetricsTable\" value:\"prom\" >
+   samples:<value:nan timestamp:1604629766606 > "
    ```
 
    **Solution**
@@ -923,7 +957,7 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
    ```shell script
    aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={default_database=prometheusDatabase,default_table=prometheusMetricsTable}"
    ```
-   For more information, please go to [Configure the AWS Lambda Function](#Configure the AWS Lambda Function).
+   For more information, please go to [Configure the AWS Lambda Function](#configure-the-aws-lambda-function).
 
 8. **Error**: `ParseEnableLoggingError`
 
@@ -961,14 +995,14 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
 
 | Errors | Status Code | Description | Solution |
 |--------|-------------|-------------|----------|
-| `ValidationException` | 400 | Invalid or malformed request. | Please check if the provided default-database or default-table values are set and review the [Configuration Options](#Configuration-options). |
+| `ValidationException` | 400 | Invalid or malformed request. | Please check if the provided default-database or default-table values are set and review the [Configuration Options](#configuration-options). |
 | `ServiceQuotaExceededException` | 402 | Instance quota of resource exceeded for this account. | Remove unused instance or upgrade the total number of resources for this account. |
 | `AccessDeniedException` | 403 | You are not authorized to perform this action | Ensure you have sufficient access to Amazon Timestream. |
 | `ResourceNotFoundException` | 404 | The operation tried to access a non-existent resource. | Specify the resource correctly, or check whether its status is not ACTIVE. |
 | `ConflictException` | 409 | Amazon Timestream was unable to process this request because it contains a resource that already exists. | Update the request with correct resource. |
 | `RejectedRecordsException` | 419 | Amazon Timestream will throw this exception in the following cases: <br> 1. Records with duplicate data where there are multiple records with the same dimensions, timestamps, and measure names but different measure values.<br>2. Records with timestamps that lie outside the retention duration of the memory store. <br>3. Records with dimensions or measures that exceed the Amazon Timestream defined limits. | 1. Check and process the data to ensure that there are no different measure values at the same timestamp given other labels/filters are the same. <br>2. Check or update the retention duration in database. <br>3. Set the maximum number of samples per write request in prometheus.yml to 100. |
 | `InvalidEndpointException` | 421 | The requested endpoint was invalid. | Check whether the endpoint is NIL or in an incorrect format. |
-| `ThrottlingException` | 429 | Too many requests were made by a user exceeding service quotas. The request was throttled. | Continue to send data at the same (or higher) throughput. Go to [Data Ingestion](https://docs.aws.amazon.com/timestream/latest/developerguide/best-practices.html#data-ingest) for more information. |
+| `ThrottlingException` | 429 | Too many requests were made by a user exceeding service quotas. The request was throttled. | Continue to send data at the same (or higher) throughput. Go to [Data Ingestion](https://docs.aws.amazon.com/timestream/latest/developerguide/data-ingest.html) for more information. |
 | `InternalServerException` | 500 | Amazon Timestream was unable to fully process this request because of an internal server error. | Please send the request again later. |
 
 ## Query API Errors
