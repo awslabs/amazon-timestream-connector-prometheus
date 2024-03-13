@@ -78,11 +78,11 @@ Resources:
     Type: "AWS::Serverless::Function"
     Properties:
       Role: !GetAtt "IAMLambdaRole.Arn"
-      CodeUri: ./timestream-prometheus-connector-linux-amd64-1.1.0.zip
+      CodeUri: ./timestream-prometheus-connector-linux-amd64-1.0.0.zip
       Description: "Prometheus remote storage connector for Amazon Timestream"
-      Handler: "timestream-prometheus-connector-linux-amd64-1.1.0"
+      Handler: "timestream-prometheus-connector-linux-amd64-1.0.0"
       MemorySize: !Ref "MemorySize"
-      Runtime: "go1.x"
+      Runtime: "provided.al2023"
       Environment:
         Variables:
           default_database: !Ref "DefaultDatabase"
