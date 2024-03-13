@@ -59,7 +59,7 @@ To install the Timestream Prometheus Connector service launch the AWS CloudForma
 
 The steps to deploy a template are as follows:
 
-1. Download the latest linux amd64 release `.zip` archive from the [Releases page](https://github.com/Bit-Quill/timestream-prometheus-connector/releases) and place in the `serverless` directory.
+1. Download the latest linux amd64 release `.zip` archive from the [Releases page](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases) and place in the `serverless` directory.
 
 2. From the the `serverless` directory, run the following command to deploy the template:
 
@@ -306,7 +306,7 @@ The user **deploying** this project **must** have the following permissions list
 				"s3:GetBucketPolicy",
 				"s3:GetBucketLocation"
 			],
-			"Resource": "arn:aws:s3:::timestreamassets-<region>/timestream-prometheus-connector-linux-amd64-1.1.0.zip"
+			"Resource": "arn:aws:s3:::timestreamassets-<region>/timestream-prometheus-connector-linux-amd64-1.0.0.zip"
 		},
 		{
 			"Sid": "VisualEditor5",
