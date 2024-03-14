@@ -5,8 +5,8 @@ go 1.14
 require (
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/alecthomas/kingpin/v2 v2.3.2
-	github.com/aws/aws-lambda-go v1.41.0
-	github.com/aws/aws-sdk-go v1.47.12
+	github.com/aws/aws-lambda-go v1.46.0
+	github.com/aws/aws-sdk-go v1.50.38
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
 	github.com/docker/docker v24.0.7+incompatible
