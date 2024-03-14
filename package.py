@@ -42,7 +42,7 @@ def create_directory(dir_name):
     copy_tree("documentation", dir_name + "/documentation")
 
 
-def run_build(target_bin, connector_version):
+def run_build(target_bin):
     """
     Compiles a binary for the target OS.
 
@@ -58,7 +58,8 @@ def run_build(target_bin, connector_version):
         logging.error("Environment variables GOOS or GOARCH are not set.")
         return None
 
-    file_name = "timestream-prometheus-connector-{}-{}-{}".format(target_bin, arch, connector_version)
+    # Required for Lambda runtime platform.al2023
+    file_name = "bootstrap"
 
     build_command = "go build -o {}/{}".format(target_bin, file_name)
     if target_bin == "windows":
@@ -159,14 +160,16 @@ def create_tarball(target_folder, version):
     :return: The name of the precompiled binary.
     """
     create_directory(target_folder)
-    bin_name = run_build(target_folder, version)
+    bin_name = run_build(target_folder)
     if bin_name is None:
         logging.error("Cannot create binary for packaging.")
         return
 
     check_binary(target_folder, bin_name)
-    tar_dir(bin_name, target_folder)
-    return bin_name
+    arch = "amd64"
+    archive_name = "timestream-prometheus-connector-{}-{}-{}".format(target_folder, arch, version)
+    tar_dir(archive_name, target_folder)
+    return archive_name
 
 
 if __name__ == "__main__":

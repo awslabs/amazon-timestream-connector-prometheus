@@ -19,6 +19,6 @@ import (
 
 // Application build information.
 var (
-	Version   = "1.1.0"
+	Version   = "1.0.0"
 	GoVersion = runtime.Version()
 )
