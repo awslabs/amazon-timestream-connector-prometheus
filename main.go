@@ -94,7 +94,7 @@ type connectionConfig struct {
 }
 
 func main() {
-	if len(os.Getenv("LAMBDA_TASK_ROOT")) != 0 && len(os.Getenv("AWS_EXECUTION_ENV")) != 0 {
+	if len(os.Getenv("LAMBDA_TASK_ROOT")) != 0 {
 		// Start the AWS Lambda lambdaHandler if the connector is executing in an AWS Lambda environment.
 		lambda.Start(lambdaHandler)
 	} else {
