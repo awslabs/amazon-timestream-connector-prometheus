@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Integrating Documentation Revisions from Game Day](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/36)
 - [Revise documentation](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/37)
 - [Update one-click deployment links and IAM policy with public S3 buckets](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/39)
+- [Update template.yml and package.py for platform.al2023 runtime](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/42)
+- [Fix Lambda Execution Failure](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/43)
 
 ### Fixed
 - [Fixing Failing golanci-lint](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/24)
