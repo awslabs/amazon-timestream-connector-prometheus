@@ -50,7 +50,7 @@ The Prometheus Connector receives and sends time series data between Prometheus 
 
 1. [Prerequisites](#prerequisites) are met.
 2. [Prometheus is configured](#prometheus-configuration), minimum version `2.0.0`.
-3. Deploy with one click deployment: [serverless/DEVELOPER_README#deployment](serverless/DEVELOPER_README#deployment).
+3. Deploy with one click deployment: [serverless/DEVELOPER_README.md#deployment](serverless/DEVELOPER_README.md#deployment).
 4. Update `remote_read` and `remote_write` values in `prometheus.yml` to the resources created by the deployment: [serverless/DEVELOPER_README.md#configure-prometheus](serverless/DEVELOPER_README.md#configure-prometheus).
 5. [Verify the Prometheus connector is working](#verification).
 
