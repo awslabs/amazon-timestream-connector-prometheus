@@ -31,6 +31,7 @@ The Prometheus Connector receives and sends time series data between Prometheus 
 - [Limitations](#limitations)
   - [Maximum Prometheus Samples Per Remote Write Request](#maximum-prometheus-samples-per-remote-write-request)
 - [Caveats](#caveats)
+  - [Unsupported SigV4 Authentication](#unsupported-sigv4-authentication)
   - [Unsupported Temporary Security Credentials](#unsupported-temporary-security-credentials)
   - [Unsupported RE2 Syntax](#unsupported-re2-syntax)
   - [Inaccurate Prometheus Metrics](#inaccurate-prometheus-metrics)
@@ -1025,6 +1026,11 @@ Ingesting more time series than the `Records per WriteRecords API request` value
 It is recommended to use the default value for `max_samples_per_send` in Prometheus' [remote write configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write).
 
 # Caveats
+
+### Unsupported SigV4 Authentication
+Prometheus supports SigV4 for the `remote_write` protocol with limitations and lacks SigV4 support for the `remote_read` protocol. With the deployment method of the `Prometheus Connector` being a lambda function, the `service` portion of the SigV4 header must be set to the value `execute-api`. Prometheus hard-codes this value to `aps`, limiting SigV4 support to Amazon Managed Service for Prometheus. Integrating SigV4 support will require `remote_read` SigV4 support added and configuration settings for the `service` portion of the SigV4 header integrated with [Prometheus](https://github.com/prometheus/prometheus). See [issue 1](https://github.com/awslabs/amazon-timestream-connector-prometheus/issues/33) for tracking the integration of this feature with the `Prometheus Connector`, and please leave a comment if this is a feature you wish to be added to the repository.
+
+If SigV4 is required, SigV4 authentication is possible by running Prometheus with a [sidecar](https://github.com/awslabs/aws-sigv4-proxy). This will require enabling IAM authentication for the APIGateway deployment, which is not covered in the `Prometheus Connector` documentation.
 
 ### Unsupported Temporary Security Credentials
 
