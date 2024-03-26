@@ -59,4 +59,4 @@ jobs:
         uses: golangci/golangci-lint-action@v4
         with:
           version: v1.54
-          args: --exclude ".Log(.*)|format.Set|level.Set"
+          args: --exclude ".Log(.*)|format.Set|level.Set" --timeout=2m
