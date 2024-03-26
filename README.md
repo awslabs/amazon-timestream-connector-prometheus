@@ -1030,7 +1030,7 @@ It is recommended to use the default value for `max_samples_per_send` in Prometh
 ### Unsupported SigV4 Authentication
 Prometheus supports SigV4 for the `remote_write` protocol with limitations, and lacks SigV4 support for the `remote_read` protocol. With the deployment method of the `Prometheus Connector` being a lambda function, the `service` portion of the SigV4 header must set to the value `execute-api`. Prometheus hard-codes this value to `aps`, limiting SigV4 support to Amazon Managed Service for Prometheus. Integrating SigV4 support will require `remote_read` SigV4 support added, and configuration settings for the `service` portion of the SigV4 header integrated with [Prometheus](https://github.com/prometheus/prometheus). See [issue 1](https://github.com/awslabs/amazon-timestream-connector-prometheus/issues/33) for tracking the integration of this feature with the `Prometheus Connector`, and please leave a comment if this is a feature you wish to be added to the repository.
 
-If SigV4 is a requirements then the `Prometheus Connector` can work with running Prometheus with a [sidecar](https://github.com/awslabs/aws-sigv4-proxy). This will require enabling IAM authentication for the APIGateway deployment which is not covered in the `Prometheus Connector` documentation.
+If SigV4 is a requirement, then SigV4 authentication is possible by running Prometheus with a [sidecar](https://github.com/awslabs/aws-sigv4-proxy). This will require enabling IAM authentication for the APIGateway deployment, which is not covered in the `Prometheus Connector` documentation.
 
 ### Unsupported Temporary Security Credentials
 
