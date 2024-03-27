@@ -133,7 +133,7 @@ This is the easiest and recommended method for running the connector.
 
 ### Run with Precompiled Binaries
 
-The pre-compiled binaries independant on platform will have the name `bootstrap` to align with the `provided.al2023` lambda runtime naming convention. Run the precompiled binaries with required arguments `default-database` and `default-table`.
+The pre-compiled binaries independent of platform will have the name `bootstrap` to align with the `provided.al2023` lambda runtime naming convention. Run the precompiled binaries with required arguments `default-database` and `default-table`.
 
 `./bootstrap --default-database=prometheusDatabase  --default-table=prometheusMetricsTable`
 
