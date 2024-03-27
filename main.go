@@ -124,6 +124,7 @@ func main() {
 		writers = append(writers, timestreamClient.WriteClient())
 		readers = append(readers, timestreamClient.QueryClient())
 
+		timestream.LogInfo(logger, "The Prometheus Connector is now ready to begin serving ingestion and query requests.")
 		if err := serve(logger, cfg.listenAddr, writers, readers, cfg.certificate, cfg.key); err != nil {
 			timestream.LogError(logger, "Error occurred while listening for requests.", err)
 			os.Exit(1)
@@ -212,7 +213,7 @@ func handleReadRequest(reqBuf []byte, timestreamClient *timestream.Client, awsCo
 
 	createQueryClient(timestreamClient, logger, awsConfigs, cfg.maxRetries)
 
-	timestream.LogInfo(logger, "Successfully created a Timestream query client to handle write requests from Prometheus.")
+	timestream.LogInfo(logger, fmt.Sprintf("Successfully created a Timestream query client to handle read requests from Prometheus to %s.%s in region %s.", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
 
 	response, err := getQueryClient(timestreamClient).Read(&readRequest, credentials)
 	if err != nil {
