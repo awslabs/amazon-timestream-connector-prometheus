@@ -117,7 +117,7 @@ func main() {
 		awsWriteConfigs.MaxRetries = aws.Int(writeClientMaxRetries)
 		timestreamClient.NewWriteClient(logger, awsWriteConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample)
 
-		timestream.LogInfo(logger, "Successfully created Timestream clients to handle read and write requests from Prometheus.")
+		timestream.LogInfo(logger, fmt.Sprintf("Successfully created Timestream clients to handle read and write requests from Prometheus to %s.%s in region %s.", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
 
 		// Register TimestreamClient to Prometheus for it to scrape metrics
 		prometheus.MustRegister(timestreamClient)
