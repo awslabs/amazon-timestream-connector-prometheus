@@ -385,6 +385,16 @@ func parseFlags() *connectionConfig {
 		os.Exit(1)
 	}
 
+	if cfg.defaultDatabase == "" {
+		kingpin.Errorf("The default database value must be set through the flag --default-database")
+		os.Exit(1)
+	}
+
+	if cfg.defaultTable == "" {
+		kingpin.Errorf("The default table value must be set through the flag --default-table")
+		os.Exit(1)
+	}
+
 	return cfg
 }
 
