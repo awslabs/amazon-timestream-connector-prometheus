@@ -117,14 +117,14 @@ func main() {
 		awsWriteConfigs.MaxRetries = aws.Int(writeClientMaxRetries)
 		timestreamClient.NewWriteClient(logger, awsWriteConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample)
 
-		timestream.LogInfo(logger, "Successfully created Timestream clients to handle read and write requests from Prometheus.")
-
+		timestream.LogInfo(logger, fmt.Sprintf("Timestream connection is initialized (Database: %s, Table: %s, Region: %s)", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
 		// Register TimestreamClient to Prometheus for it to scrape metrics
 		prometheus.MustRegister(timestreamClient)
 
 		writers = append(writers, timestreamClient.WriteClient())
 		readers = append(readers, timestreamClient.QueryClient())
 
+		timestream.LogInfo(logger, "The Prometheus Connector is now ready to begin serving ingestion and query requests.")
 		if err := serve(logger, cfg.listenAddr, writers, readers, cfg.certificate, cfg.key); err != nil {
 			timestream.LogError(logger, "Error occurred while listening for requests.", err)
 			os.Exit(1)
@@ -184,8 +184,7 @@ func handleWriteRequest(reqBuf []byte, timestreamClient *timestream.Client, awsC
 
 	createWriteClient(timestreamClient, logger, awsConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample)
 
-	timestream.LogInfo(logger, "Successfully created a Timestream write client to handle write requests from Prometheus.")
-
+	timestream.LogInfo(logger, fmt.Sprintf("Timestream write connection is initialized (Database: %s, Table: %s, Region: %s)", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
 	if err := getWriteClient(timestreamClient).Write(&writeRequest, credentials); err != nil {
 		errorCode := http.StatusBadRequest
 
@@ -214,7 +213,7 @@ func handleReadRequest(reqBuf []byte, timestreamClient *timestream.Client, awsCo
 
 	createQueryClient(timestreamClient, logger, awsConfigs, cfg.maxRetries)
 
-	timestream.LogInfo(logger, "Successfully created a Timestream query client to handle write requests from Prometheus.")
+	timestream.LogInfo(logger, fmt.Sprintf("Timestream query connection is initialized (Database: %s, Table: %s, Region: %s)", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
 
 	response, err := getQueryClient(timestreamClient).Read(&readRequest, credentials)
 	if err != nil {
@@ -383,6 +382,16 @@ func parseFlags() *connectionConfig {
 	}
 
 	if err := cfg.parseBoolFromStrings(enableLogging, failOnLongMetricLabelName, failOnInvalidSample); err != nil {
+		os.Exit(1)
+	}
+
+	if cfg.defaultDatabase == "" {
+		kingpin.Errorf("The default database value must be set through the flag --default-database")
+		os.Exit(1)
+	}
+
+	if cfg.defaultTable == "" {
+		kingpin.Errorf("The default table value must be set through the flag --default-table")
 		os.Exit(1)
 	}
 
