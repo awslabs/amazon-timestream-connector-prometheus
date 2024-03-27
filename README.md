@@ -159,7 +159,7 @@ For more examples on configuring the Prometheus Connector see [Configuration Opt
 
 The following error message may show up when running the precompiled binary on macOS:
 
-`"timestream-prometheus-connector-darwin-amd64" cannot be opened because the developer cannot be verified.`
+`"bootstrap" cannot be opened because the developer cannot be verified.`
 
 Follow these steps to resolve:
 
@@ -387,7 +387,7 @@ To provide access to this newly created role, add a permission to the current us
 Go to [Configuration Options](#configuration-options) to see more information.
 9. Scroll down to basic settings.
 10. Click `Edit`.
-11. In the `Handler` section, enter the name of the Amazon Timestream Prometheus Connector ZIP file, which will be `timestream-prometheus-connector-1.0.0`.
+11. In the `Handler` section, enter the name of the Amazon Timestream Prometheus Connector ZIP file, which will be `bootstrap`.
 12. Click `Save`.
 
 #### Create the API on Amazon API Gateway
