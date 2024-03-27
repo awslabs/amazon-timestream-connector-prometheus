@@ -117,8 +117,8 @@ func main() {
 		awsWriteConfigs.MaxRetries = aws.Int(writeClientMaxRetries)
 		timestreamClient.NewWriteClient(logger, awsWriteConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample)
 
-		timestream.LogInfo(logger, fmt.Sprintf("Successfully created Timestream clients to handle read and write requests from Prometheus to %s.%s in region %s.", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
-
+		timestream.LogInfo(logger, "Successfully created Timestream clients to handle read and write requests from Prometheus")
+		timestream.LogDebug(logger, fmt.Sprintf("Ingestion and query default configurations - Default Database: %s, Default Table: %s, Region: %s", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
 		// Register TimestreamClient to Prometheus for it to scrape metrics
 		prometheus.MustRegister(timestreamClient)
 
@@ -185,7 +185,7 @@ func handleWriteRequest(reqBuf []byte, timestreamClient *timestream.Client, awsC
 	createWriteClient(timestreamClient, logger, awsConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample)
 
 	timestream.LogInfo(logger, "Successfully created a Timestream write client to handle write requests from Prometheus.")
-
+	timestream.LogDebug(logger, fmt.Sprintf("Ingestion and query default configurations - Default Database: %s, Default Table: %s, Region: %s", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
 	if err := getWriteClient(timestreamClient).Write(&writeRequest, credentials); err != nil {
 		errorCode := http.StatusBadRequest
 
