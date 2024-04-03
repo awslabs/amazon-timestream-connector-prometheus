@@ -333,14 +333,14 @@ Running the Prometheus Connector on AWS Lambda allows for a serverless workflow.
 
 18. Take note of the `Role ARN`, this is required when creating a policy to allow the current user access to the role.
 
-To provide access to this newly created role, add a permission to the current user with the following steps:
+To provide access to this newly-created role, add a permission to the current user with the following steps:
 1. Open the [AWS management console](https://console.aws.amazon.com/iam/) for IAM.
 2. Under `Access management`, click `Users`.
 3. Select the user that needs access to this role.
 4. Click `Add permissions`.
 5. Select `Attach existing policies directly`.
 6. Click `Create policy`.
-7. Switch to the `JSON` tab, and paste the following to provide the user with the permission to `PassRole` on the newly created role, where `role_arn` can be on the `Summary` page of the newly created role:
+7. Switch to the `JSON` tab, and paste the following to provide the user with the permission to `PassRole` on the newly-created role, where `role_arn` can be on the `Summary` page of the newly-created role:
 
    ```json
    {
@@ -371,13 +371,13 @@ To provide access to this newly created role, add a permission to the current us
 4. Choose `Amazon Linux 2023` from the Runtime dropdown.
 5. Expand `Change default execution role`.
 6. Select `Use an existing role`.
-7. Choose the newly created role from the dropdown, for this example it will be `LambdaTimestreamFullAccessRole`.
+7. Choose the newly-created role from the dropdown, for this example it will be `LambdaTimestreamFullAccessRole`.
 8. Click `Create function`.
 
 #### Configure the AWS Lambda Function
 
 1. Open the [AWS management console](https://console.aws.amazon.com/lambda/) for AWS Lambda.
-2. Select the newly created function, in this example it will be `PrometheusConnector`.
+2. Select the newly-created function, in this example it will be `PrometheusConnector`.
 3. Under the `code` section, click `Upload from`.
 4. Select `.zip file`.
 5. Upload the ZIP file containing the precompiled Linux binary, which can be downloaded from the [latest releases](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases).
@@ -419,7 +419,7 @@ Go to [Configuration Options](#configuration-options) to see more information.
 16. Enter a name for the stage, in this example we will use `dev`.
 17. Click the `Auto-deploy` button and click `Next`.
 18. Click `Create`.
-19. Select the newly created APIGateway and take note of the invoke URL, this URL is required to set up Prometheus' remote read and write URL.
+19. Select the newly-created API Gateway and take note of the invoke URL, this URL is required to set up Prometheus' remote read and write URL.
 20. It is highly recommended having TLS encryption enabled during production. See [Configuring mutual TLS authentication for an HTTP API](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-mutual-tls.html).
 
 #### Configure Prometheus for AWS Lambda
@@ -454,7 +454,7 @@ To configure logging for API Gateway to CloudWatch, a new CloudWatch log group n
 2. Click the `Log groups` under `Log` in the sidebar.
 2. Select `Create log group`.
 3. Enter a group name and click `Create`.
-4. Select the newly created log group from the list of log groups to see the log group details.
+4. Select the newly-created log group from the list of log groups to see the log group details.
 5. Take note of the ARN.
 
 Next, open the previously created Prometheus Connector API on [API Gateway]( https://console.aws.amazon.com/apigateway/main/apis) to configure logging.
@@ -463,7 +463,7 @@ Next, open the previously created Prometheus Connector API on [API Gateway]( htt
 2. Select a stage from the dropdown and click `Next`.
 3. Click `Edit`.
 4. Toggle `Access logging`.
-5. Paste the ARN of the newly created log group.
+5. Paste the ARN of the newly-created log group.
 6. Select the preferred log format.
 7. Click `Save`.
 
