@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.0.1](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.0.1) - 2024-04-03
+### Added
+- [Document the Lack of SigV4 Support](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/47)
+- [Add Default Ingestion Configuration Logging and Update Documentation to Reflect Runtime Naming Convention](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/49)
+
+### Fixed
+- [Fix DEVELOPER_README.md link in Quick Start](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/45)
+- [Fix Flakey Linter Action](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/48)
+- [Update Documentation to Reflect New Lambda Runtime](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/50)
+
+### Dependencies
+- [Bump github.com/docker/docker from 24.0.7+incompatible to 24.0.9+incompatible](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/46)
+
+
 ## [v1.0.0](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.0.0) - 2024-03-14
 ### Added
 - [Adding region to environment vars](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/16)
