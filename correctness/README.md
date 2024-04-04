@@ -14,5 +14,5 @@ Prior to running the tests in correctness_test.go, ensure the following:
 `docker save timestream-prometheus-connector-docker | gzip > timestream-prometheus-connector-docker-image-<version>.tar.gz`
 
 ## How to execute tests
-1. Run the following command to execute the TLS tests:
+1. Run the following command to execute the correctness tests:
 `go test -v ./correctness`
