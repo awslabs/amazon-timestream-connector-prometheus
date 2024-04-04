@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 	"timestream-prometheus-connector/integration"
+	"timestream-prometheus-connector/timestream"
 
 	"github.com/docker/docker/client"
 )
@@ -58,19 +59,15 @@ func TestQueries(t *testing.T) {
 		promQL = loadPromQLFromFile(t, file, promQL)
 	}
 
-	var versionSetting = os.Getenv("PROMETHEUS_CONNECTOR_VERSION")
-	if versionSetting == "" {
-		t.Error("Set the environment variable PROMETHEUS_CONNECTOR_VERSION to the version of the docker image tarball you wish to run the correctness tests with.")
-		t.FailNow()
-	}
+	dockerClient, ctx := integration.CreateDockerClient(t)
 	connectorConfig := integration.ConnectorContainerConfig{
-		DockerImage:       "../resources/timestream-prometheus-connector-docker-image-" + versionSetting + ".tar.gz",
+		DockerImage:       "../resources/timestream-prometheus-connector-docker-image-" + timestream.Version + ".tar.gz",
 		ImageName:         connectorDockerImageName,
 		ConnectorCommands: connectorCMDs,
 	}
 
-	dockerClient, ctx := integration.CreateDockerClient(t)
 	containerIDs = append(containerIDs, integration.StartConnector(t, dockerClient, ctx, connectorConfig))
+
 	prometheusConfig := integration.PrometheusContainerConfig{
 		DockerImage: prometheusDockerImage,
 		ImageName:   prometheusDockerImageName,
