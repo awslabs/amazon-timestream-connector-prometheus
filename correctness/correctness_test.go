@@ -60,6 +60,7 @@ func TestQueries(t *testing.T) {
 	}
 
 	dockerClient, ctx := integration.CreateDockerClient(t)
+
 	connectorConfig := integration.ConnectorContainerConfig{
 		DockerImage:       "../resources/timestream-prometheus-connector-docker-image-" + timestream.Version + ".tar.gz",
 		ImageName:         connectorDockerImageName,
