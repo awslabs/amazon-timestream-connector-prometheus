@@ -16,5 +16,5 @@ Prior to running the tests in correctness_test.go, ensure the following:
 ## How to execute tests
 1. Set the environment variable `PROMETHEUS_CONNECTOR_VERSION` to the version of the docker image tarball which is stored in the `resources` directory in the repository root.
 e.g. `export PROMETHEUS_CONNECTOR_VERSION="1.0.0"`
-2. Run the following command to execute the TLS tests:
+2. Run the following command to execute the correctness tests:
 `go test -v ./correctness`
