@@ -169,9 +169,9 @@ Follow these steps to resolve:
 3. Under the `General` tab, select `Open Anyway`.
 
 ### Run with Docker Image
-Load the Docker image by the following command:
+Load the Docker image by the following command and replace the value for <version> appropriately:
 ```shell script
-docker load < timestream-prometheus-connector-docker-image-1.0.0.tar.gz
+docker load < timestream-prometheus-connector-docker-image-<version>.tar.gz
 ```
 
 - **Linux and macOS**
