@@ -41,7 +41,6 @@ const (
 	prometheusConfigPath      = "config/correctness_testing.yml"
 	prometheusDockerImageName = "prom/prometheus"
 	connectorDockerImageName  = "timestream-prometheus-connector-docker"
-	connectorDockerImagePath  = "../resources/timestream-prometheus-connector-docker-image-1.0.0.tar.gz"
 )
 
 var (
@@ -59,16 +58,19 @@ func TestQueries(t *testing.T) {
 		promQL = loadPromQLFromFile(t, file, promQL)
 	}
 
-	dockerClient, ctx := integration.CreateDockerClient(t)
-
+	var versionSetting = os.Getenv("PROMETHEUS_CONNECTOR_VERSION")
+	if versionSetting == "" {
+		t.Error("Set the environment variable PROMETHEUS_CONNECTOR_VERSION to the version of the docker image tarball you wish to run the correctness tests with.")
+		t.FailNow()
+	}
 	connectorConfig := integration.ConnectorContainerConfig{
-		DockerImage:       connectorDockerImagePath,
+		DockerImage:       "../resources/timestream-prometheus-connector-docker-image-" + versionSetting + ".tar.gz",
 		ImageName:         connectorDockerImageName,
 		ConnectorCommands: connectorCMDs,
 	}
 
+	dockerClient, ctx := integration.CreateDockerClient(t)
 	containerIDs = append(containerIDs, integration.StartConnector(t, dockerClient, ctx, connectorConfig))
-
 	prometheusConfig := integration.PrometheusContainerConfig{
 		DockerImage: prometheusDockerImage,
 		ImageName:   prometheusDockerImageName,
