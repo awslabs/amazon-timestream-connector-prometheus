@@ -71,8 +71,7 @@ The steps to deploy a template are as follows:
    In addition to creating a new stack with the default name `PrometheusTimestreamConnector` this command creates a default stack called `aws-sam-cli-managed-default`. The default stack manages an [S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html) [bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html#BasicsBucket) hosting all the deployment artifacts:
 
 
-   - the [SAM](https://aws.amazon.com/serverless/sam/) template;
-   - the precompiled connector binary for Linux.
+   - the [SAM](https://aws.amazon.com/serverless/sam/) template.
 
    To use a specific S3 bucket run:
 
@@ -92,9 +91,11 @@ The steps to deploy a template are as follows:
     sam deploy --guided
     ```
 
-  To deploy to a specific region:
+    To deploy to a specific region:
 
-  TBD - Lambda deployment needs region set on creation.
+      ```shell
+      sam deploy --region <region>
+      ```
 
 To view the full set of `sam deploy` options see the [sam deploy documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-cli-command-reference-sam-deploy.html).
 
@@ -135,9 +136,6 @@ To view the full set of `sam deploy` options see the [sam deploy documentation](
 ## Configuration
 
 ### Configure Prometheus
-
-To let the Lambda function know which database/table destination is for a Prometheus time series,
-two additional labels need to be added in every Prometheus time series through [Prometheus relabel config](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config).
 
 1. Open the configuration file for Prometheus, the file is usually named `prometheus.yml`.
 
@@ -219,7 +217,7 @@ If the application is ready for production, set the stage name to a more appropr
 
 ## Required Permissions
 
-The template assumes the user deploying the project has administrative permissions. If the user is missing any of the required permissions the deployment will fail.
+The template assumes the user deploying the project has all the required permissions. If the user is missing any of the required permissions the deployment will fail.
 
 See [Troubleshooting](#troubleshooting) section for more details.
 
@@ -306,7 +304,7 @@ The user **deploying** this project **must** have the following permissions list
 				"s3:GetBucketPolicy",
 				"s3:GetBucketLocation"
 			],
-			"Resource": "arn:aws:s3:::timestreamassets-<region>/timestream-prometheus-connector-linux-amd64-1.0.0.zip"
+			"Resource": "arn:aws:s3:::timestreamassets-<region>/timestream-prometheus-connector-linux-amd64-*.zip"
 		},
 		{
 			"Sid": "VisualEditor5",
@@ -513,10 +511,10 @@ aws timestream-query query --query-string "SELECT count() FROM PrometheusDatabas
 
 You should now see some non-zero data value within `Data`, which verifies that the Prometheus instance can ingest data into `PrometheusMetricsTable`.
 
-Next, in order to verify that Prometheus can make a successful read request, add data to your table by running
+Next, in order to verify that Prometheus can make a successful read request, add data to your table by running and replacing `<current-time-in-seconds>` appropriately:
 
 ```shell
-aws timestream-write write-records --database-name PrometheusDatabase --table-name PrometheusMetricsTable --records '[{"Dimensions":[{"DimensionValueType": "VARCHAR", "Name": "job","Value": "prometheus"},{"DimensionValueType": "VARCHAR","Name": "instance","Value": "localhost:9090"}],"MeasureName":"prometheus_temperature","MeasureValue":"98.76","TimeUnit":"SECONDS","Time":"1694446844"}]'
+aws timestream-write write-records --database-name PrometheusDatabase --table-name PrometheusMetricsTable --records '[{"Dimensions":[{"DimensionValueType": "VARCHAR", "Name": "job","Value": "prometheus"},{"DimensionValueType": "VARCHAR","Name": "instance","Value": "localhost:9090"}],"MeasureName":"prometheus_temperature","MeasureValue":"98.76","TimeUnit":"SECONDS","Time":"<current-time-in-seconds>"}]'
 ```
 
 Open the Prometheus web interface (default `localhost:9090`) and within the execution bar run
@@ -534,19 +532,19 @@ And verify that data is displayed.
 1. Delete cloudformation stack and S3 artifacts
 
    ```shell
-   sam delete --stack-name PrometheusConnector
+   sam delete --stack-name PrometheusTimestreamConnector --region <region>
    ```
 
 2. Delete table
 
    ```shell
-   aws timestream-write delete-table --database-name <PrometheusDatabase> --table-name <PrometheusMetricsTable>
+   aws timestream-write delete-table --database-name <PrometheusDatabase> --table-name <PrometheusMetricsTable> --region <region>
    ```
 
 3. Delete database
 
    ```shell
-   aws timestream-write delete-database --database-name <PrometheusDatabase>
+   aws timestream-write delete-database --database-name <PrometheusDatabase> --region <region>
    ```
 
    > **NOTE**: Cleaning up resources will require additional IAM permissions added to the base required for deployment under [Deployment Permissions](#deployment-permissions)

@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 	"timestream-prometheus-connector/integration"
+	"timestream-prometheus-connector/timestream"
 
 	"github.com/docker/docker/client"
 )
@@ -41,7 +42,6 @@ const (
 	prometheusConfigPath      = "config/correctness_testing.yml"
 	prometheusDockerImageName = "prom/prometheus"
 	connectorDockerImageName  = "timestream-prometheus-connector-docker"
-	connectorDockerImagePath  = "../resources/timestream-prometheus-connector-docker-image-1.0.0.tar.gz"
 )
 
 var (
@@ -62,7 +62,7 @@ func TestQueries(t *testing.T) {
 	dockerClient, ctx := integration.CreateDockerClient(t)
 
 	connectorConfig := integration.ConnectorContainerConfig{
-		DockerImage:       connectorDockerImagePath,
+		DockerImage:       "../resources/timestream-prometheus-connector-docker-image-" + timestream.Version + ".tar.gz",
 		ImageName:         connectorDockerImageName,
 		ConnectorCommands: connectorCMDs,
 	}
