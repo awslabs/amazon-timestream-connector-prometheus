@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Fix DEVELOPER_README.md link in Quick Start](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/45)
 - [Fix Flakey Linter Action](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/48)
 - [Update Documentation to Reflect New Lambda Runtime](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/50)
+- [Update Version References and Documentation](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/51)
 
 ### Dependencies
 - [Bump github.com/docker/docker from 24.0.7+incompatible to 24.0.9+incompatible](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/46)
