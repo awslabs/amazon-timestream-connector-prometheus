@@ -23,7 +23,7 @@ require (
 	github.com/prometheus/common v0.45.0
 	github.com/prometheus/prometheus v2.5.0+incompatible
 	github.com/stretchr/testify v1.8.4
-	golang.org/x/net v0.18.0
+	golang.org/x/net v0.23.0
 	google.golang.org/grpc v1.59.0 // indirect
 	gotest.tools/v3 v3.5.1 // indirect
 )
