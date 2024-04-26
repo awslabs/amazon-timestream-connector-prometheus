@@ -47,6 +47,10 @@ Parameters:
     Type: "String"
     Default: "LambdaExecutionPolicy"
     Description: "The name of the basic execution policy created for AWS Lambda."
+  LogLevel:
+    Type: "String"
+    Default: "info"
+    Description: "The output level for logs. Valid values include info, warn, debug, error"
 
 Resources:
   IAMLambdaRole:
@@ -90,6 +94,7 @@ Resources:
           default_database: !Ref "DefaultDatabase"
           default_table: !Ref "DefaultTable"
           region: !Ref "AWS::Region"
+          log_level: !Ref "LogLevel"
       Events:
         WriteApi:
           Type: HttpApi
