@@ -855,7 +855,12 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
 ```
 
 # Troubleshooting
+
+> **NOTE**: All documented errors will be logged upon occurrence.
+
 ## Prometheus Connector Specific Errors
+
+All connector-specific errors can be found in [`errors/errors.go`](./errors/errors.go).
 
 1. **Error**: `LongLabelNameError`
 
@@ -993,6 +998,22 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
     **Solution**
 
     Check the request headers and add `x-prometheus-remote-read-version` or `x-prometheus-remote-write-version` to the request headers. This error returns a 400 Bad Request status code to the caller.
+
+12. **Error**: `ParseRetriesError`
+
+    **Description**: This error will occur when the `max-retries` option has an invalid value.
+    
+    **Solution**
+    
+    See the [Retry Configuration Options](#retry-configuration-options) section for acceptable formats for the `max-retries` option.
+
+13. **Error**: `UnknownMatcherError`
+
+    **Description**: This error will occur when an unknown matcher is within a PromQL query. Prometheus only supports four types of matchers within a filter: `=`, `!=`, `=~`, and `!~`.
+
+    **Solution**
+
+    Re-evaluate your PromQL query and ensure you are using only the above matchers.
 
 ## Write API Errors
 
