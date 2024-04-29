@@ -219,6 +219,8 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 			duration := time.Since(begin).Seconds()
 			if err != nil {
 				sdkErr = wc.handleSDKErr(req, err, sdkErr)
+			} else {
+				LogInfo(wc.logger, fmt.Sprintf("Successfully wrote %d records to database: %s table: %s", len(writeRecordsInput.Records), database, table))
 			}
 			wc.writeExecutionTime.Observe(duration)
 			wc.writeRequests.Inc()
@@ -260,6 +262,7 @@ func (qc *QueryClient) Read(req *prompb.ReadRequest, credentials *credentials.Cr
 					LogError(qc.logger, "Error occurred while converting the Timestream query results to Prometheus QueryResults", err)
 					return false
 				}
+				LogInfo(qc.logger, fmt.Sprintf("Successfully read %d records from database: %s table: %s", len(page.Rows), qc.client.defaultDataBase, qc.client.defaultTable))
 				return true
 			})
 		if queryPageError != nil {
