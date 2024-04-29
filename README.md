@@ -731,7 +731,7 @@ User-Agent: Prometheus Connector/<version> aws-sdk-go/<version> (go<version>; <o
    
    PromQL also supports regex, here is an example:
    ```
-   prometheus_http_requests_total{handler!="/api/v1/query", job=~"p*", code!~"2..", prometheusDatabase="prometheusDatabase", prometheusMetricsTable="prometheusMetricsTable"}
+   prometheus_http_requests_total{handler!="/api/v1/query", job=~"p*", code!~"2.."}
    ```
    This example queries all rows from `prometheusMetricsTable` of `prometheusDatabase` where:
   
