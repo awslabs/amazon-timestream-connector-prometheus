@@ -665,8 +665,7 @@ remote_read:
 
 ## Authentication
 
-When the connector is deployed as a Lambda function, authentication is handled by passing through credentials with each request; validation is done within the Lambda function using the AWS SDK for Go. In general, the Timestream Prometheus Connector will use the default credentials provider implemented in the AWS SDK for Go instead of allowing users 
-to provide the credentials through command-line flags. This prevents sensitive data from being easily scraped.
+When the connector is deployed as a Lambda function, authentication is handled by passing through credentials with each request; validation is done within the Lambda function using the AWS SDK for Go. In general, the Timestream Prometheus Connector will use the default credentials provider implemented in the AWS SDK for Go instead of allowing users to provide the credentials through command-line flags. This prevents sensitive data from being easily scraped.
 
 Due to Prometheus' lack of support for SigV4 (see the [Unsupported SigV4 Authentication](#unsupported-sigv4-authentication) section), the
 API Gateway deployed via one-click deployment or with the `serverless/template.yml` CloudFormation template
