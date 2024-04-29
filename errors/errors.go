@@ -125,7 +125,7 @@ func NewMissingHeaderError(readHeader, writeHeader string) error {
 	return &MissingHeaderError{baseConnectorError: baseConnectorError{
 		statusCode: http.StatusBadRequest,
 		errorMsg:   fmt.Sprintf("No appropriate header found in the request. Please ensure the request header contains either %s or %s.", readHeader, writeHeader),
-		message:    fmt.Sprintf("The request must contains either %s or %s in the header.", readHeader, writeHeader),
+		message:    fmt.Sprintf("The request must contain either %s or %s in the header.", readHeader, writeHeader),
 	}}
 }
 
