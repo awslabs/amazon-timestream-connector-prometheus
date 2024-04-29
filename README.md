@@ -855,9 +855,6 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
 ```
 
 # Troubleshooting
-
-> **NOTE**: All documented errors will be logged upon occurrence.
-
 ## Prometheus Connector Specific Errors
 
 All connector-specific errors can be found in [`errors/errors.go`](./errors/errors.go).
