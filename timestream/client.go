@@ -291,7 +291,7 @@ func (qc *QueryClient) Read(req *prompb.ReadRequest, credentials *credentials.Cr
 func (wc *WriteClient) handleSDKErr(req *prompb.WriteRequest, currErr error, errToReturn error) error {
 	requestError, ok := currErr.(awserr.RequestFailure)
 	if !ok {
-		LogError(wc.logger, "Error occurred while ingesting Timestream Records.", currErr)
+        LogError(wc.logger, fmt.Sprintf("Error occurred while ingesting Timestream Records. %d records failed to be written", len(req.Timeseries)), currErr)
 		return errors.NewSDKNonRequestError(currErr)
 	}
 
