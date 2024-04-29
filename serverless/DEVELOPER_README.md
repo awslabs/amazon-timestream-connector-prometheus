@@ -39,6 +39,10 @@ To start using the Prometheus remote storage connector for Timestream, there are
 
 ### One-click Deployment
 
+One-click deployment will deploy the connector as a Lambda function along with an API Gateway.
+The API Gateway will use a public endpoint with TLS 1.2 encryption for requests. 
+For more information on the API Gateway's public endpoints, see the [Amazon API Gateway Public Endpoints](#amazon-api-gateway-public-endpoints) section below.
+
 Use an [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/Welcome.html) [template](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-whatis-concepts.html#cfn-concepts-templates) to create the [stack](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-whatis-concepts.html#cfn-concepts-stacks):
 
 To install the Timestream Prometheus Connector service launch the AWS CloudFormation stack on the AWS CloudFormation console by choosing one of the "Launch Stack" buttons in the following table:
@@ -214,6 +218,18 @@ Follow the verification steps in [README.md#verification](../README.md#verificat
 
 The default stage name `dev` may indicate the endpoint is at `development` stage.
 If the application is ready for production, set the stage name to a more appropriate value like `prod` when deploying the stack.
+
+### Amazon API Gateway Public Endpoints
+
+When deployed with one-click deployment or the `serverless/template.yml` CloudFormation template, an API Gateway will be created with public endpoints.
+
+The public endpoints are:
+
+- Write: `https://<API Gateway ID>.execute-api.<region>.amazonaws.com/dev/write`
+
+- Read: `https://<API Gateway ID>.execute-api.<region>.amazonaws.com/dev/read`
+
+The public endpoints use a minimum of TLS 1.2 encryption in transit for all requests, as all API Gateway endpoints do [by default](https://docs.aws.amazon.com/apigateway/latest/developerguide/data-protection-encryption.html#data-protection-in-transit).
 
 ## Required Permissions
 

@@ -49,6 +49,9 @@ The Prometheus Connector receives and sends time series data between Prometheus 
 
 ## Quick Start
 
+The following steps use one-click deployment to deploy the connector as a Lambda function along
+with an API Gateway.
+
 1. [Prerequisites](#prerequisites) are met.
 2. [Prometheus is configured](#prometheus-configuration), minimum version `2.0.0`.
 3. Deploy with one click deployment: [serverless/DEVELOPER_README.md#deployment](serverless/DEVELOPER_README.md#deployment).
@@ -662,8 +665,11 @@ remote_read:
 
 ## Authentication
 
-The Prometheus Connector will use the default credentials provider implemented in the AWS SDK for Go instead of allowing users 
-to provide the credentials through command-line flags. This prevents sensitive data from being easily scraped.
+When the connector is deployed as a Lambda function, authentication is handled by passing through credentials with each request; validation is done within the Lambda function using the AWS SDK for Go. In general, the Timestream Prometheus Connector will use the default credentials provider implemented in the AWS SDK for Go instead of allowing users to provide the credentials through command-line flags. This prevents sensitive data from being easily scraped.
+
+Due to Prometheus' lack of support for SigV4 (see the [Unsupported SigV4 Authentication](#unsupported-sigv4-authentication) section), the
+API Gateway deployed via one-click deployment or with the `serverless/template.yml` CloudFormation template
+does not use SigV4 for its public endpoints.
 
 ## User-Agent Header
 
