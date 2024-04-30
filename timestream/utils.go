@@ -21,7 +21,8 @@ import (
 
 // LogError logs the provided error with the given message.
 func LogError(logger log.Logger, msg string, err error, keyvals ...interface{}) {
-	level.Error(logger).Log(append([]interface{}{"message", msg, "error", err}, keyvals...)...)
+	level.Error(logger).Log(append([]interface{}{"message", msg}, keyvals...)...)
+	level.Debug(logger).Log(err)
 }
 
 // LogDebug logs at DEBUG level with the given message and any additional key-value pairs.

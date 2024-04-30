@@ -863,6 +863,8 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
 # Troubleshooting
 ## Prometheus Connector Specific Errors
 
+> **Note**: Errors and records are only logged with debug mode. With the default log level of `info`, only the high level errors are logged.
+
 All connector-specific errors can be found in [`errors/errors.go`](./errors/errors.go).
 
 1. **Error**: `LongLabelNameError`
