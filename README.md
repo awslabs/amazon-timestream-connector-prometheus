@@ -599,6 +599,12 @@ Configure the Prometheus Connector to retry up to 10 times upon recoverable erro
 | `log.level` | `log_level` |  Sets the output level for logs. | No | `info` | `info`, `warn`, `debug`, `error` |
 | `log.format` | `log_format` |  Sets the output format for the logs. The output for logs always goes to stderr, unless the logging has been disabled. | No | `logfmt` | `logfmt`, `json` |
 
+Setting log levels:
+- SAM CLI - `sam deploy --parameter-overrides "LogLevel=Debug"`
+- One-click deployment - Update the `log_level` environment variable when configuring the deployment parameters
+  - With an already deployed Lambda you can edit the environment variable `log_level` in the Lambda configuration
+- Local execution - `./bootstrap --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --log.level=info`
+
 >**NOTE**: The logging level is ***by default*** set to `info`. Set `log.level` to `debug` to view any Samples ignored due to long metric name or non-finite values.
 
 `fail-on-long-label` &mdash; Prometheus recommends using meaningful and detailed metrics names, which may result in metric names exceeding the maximum length (256 bytes) supported by Amazon Timestream.
@@ -863,7 +869,7 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
 # Troubleshooting
 ## Prometheus Connector Specific Errors
 
-> **Note**: Errors and records are only logged with debug mode. With the default log level of `info`, only the high level errors are logged.
+> **Note**: Errors and records are only logged with debug mode. With the default log level of `info`, only the high level errors are logged. See [Logger Configuration Options](#logger-configuration-options) for how to adjust the logging level.
 
 All connector-specific errors can be found in [`errors/errors.go`](./errors/errors.go).
 
