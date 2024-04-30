@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.0.1](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.0.2) - 2024-04-30
+
+### Added
+- [Add documentation for API Gateway endpoints](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/54)
+- [Adding Log Level to Environment Variables in CFN Template](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/55)
+- [Log number of failed records and update logging documentation](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/56)
+### Changed
+- [Changing Logging of Records and Errors to Debug Mode](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/57)
+### Dependencies
+- [Bump golang.org/x/net from 0.18.0 to 0.23.0 in the go_modules group across 1 directory](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/53)
+
 ## [v1.0.1](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.0.1) - 2024-04-03
 ### Added
 - [Document the Lack of SigV4 Support](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/47)
