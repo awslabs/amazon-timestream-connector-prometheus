@@ -867,6 +867,26 @@ openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out
 ```
 
 # Troubleshooting
+## Information Logs
+
+The following logs can be useful for determining if any records are ignored by the `Prometheus Connector`. Enable `debug` logging if you require additional information about rejected records.
+
+Records ignored by the Prometheus Connector:
+```
+x number of records were rejected for ingestion to Timestream. See Troubleshooting in the README for why these may be rejected, or turn on debug logging for additional info.
+```
+
+Records requested for ingestion through the Prometheus Connector:
+```
+x records requested for ingestion from Prometheus.
+```
+
+Records successfully ingested through the Prometheus Connector:
+```
+Successfully wrote x records to database: PrometheusDatabase table: PrometheusMetricsTable
+```
+
+
 ## Prometheus Connector Specific Errors
 
 > **Note**: Errors and records are only logged with debug mode. With the default log level of `info`, only the high level errors are logged. See [Logger Configuration Options](#logger-configuration-options) for how to adjust the logging level.
