@@ -45,6 +45,19 @@ For more information on the API Gateway's public endpoints, see the [Amazon API 
 
 Use an [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/Welcome.html) [template](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-whatis-concepts.html#cfn-concepts-templates) to create the [stack](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-whatis-concepts.html#cfn-concepts-stacks):
 
+When deploying your connector using one-click deployment the following parameters are available to adjust prior to deployment:
+- APIGatewayStageName
+- DefaultDatabase
+- DefaultTable
+- ExecutionPolicyName
+- LogLevel
+- MemorySize
+- ReadThrottlingBurstLimit
+- TimeoutInMillis
+- WriteThrottlingBurstLimit
+
+The `DefaultDatabase`, `DefaultTable` and `LogLevel` may be altered to fit your needs, all other parameters will not require altering for the standard deployment. The `DefaultDatabase` and `DefaultTable` determine the ingestion destination, and `LogLevel` can be set to `info`, `debug`, `warn`, or `error`.
+
 To install the Timestream Prometheus Connector service launch the AWS CloudFormation stack on the AWS CloudFormation console by choosing one of the "Launch Stack" buttons in the following table:
 
 | Region                    | View                                                                                                                                      | View in Designer                                                                                                                                                                                                                                         | Launch                                                                                                                                                                                                                                                                            |
