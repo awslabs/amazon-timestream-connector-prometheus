@@ -197,10 +197,10 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 	var err error
 	wc.timestreamWrite, err = initWriteClient(wc.config)
 	if err != nil {
-		LogError(wc.logger, "Unable to construct a new session with the given credentials", err)
+		LogError(wc.logger, "Unable to construct a new session with the given credentials.", err)
 		return err
 	}
-	LogInfo(wc.logger, fmt.Sprintf("%d records requested for ingestion from Prometheus", len(req.Timeseries)))
+	LogInfo(wc.logger, fmt.Sprintf("%d records requested for ingestion from Prometheus.", len(req.Timeseries)))
 	recordMap := make(recordDestinationMap)
 	recordMap, err = wc.convertToRecords(req.Timeseries, recordMap)
 	if err != nil {
@@ -710,10 +710,10 @@ func (c *Client) Collect(ch chan<- prometheus.Metric) {
 }
 
 // Get the value of a counter
-func getCounterValue(col prometheus.Collector) int {
-    c := make(chan prometheus.Metric, 1)
-    col.Collect(c)
-    m := prometheusClientModel.Metric{}
-    _ = (<-c).Write(&m)
-    return int(*m.Counter.Value)
+func getCounterValue(collector prometheus.Collector) int {
+    channel := make(chan prometheus.Metric, 1) // 1 denotes no Vector
+    collector.Collect(channel)
+    metric := prometheusClientModel.Metric{}
+    _ = (<-channel).Write(&metric)
+    return int(*metric.Counter.Value)
 }
