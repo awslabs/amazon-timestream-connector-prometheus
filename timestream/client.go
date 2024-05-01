@@ -37,6 +37,8 @@ import (
 	"strings"
 	"time"
 	"timestream-prometheus-connector/errors"
+
+	prometheusClientModel "github.com/prometheus/client_model/go"
 )
 
 type labelOperation string
@@ -198,7 +200,7 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 		LogError(wc.logger, "Unable to construct a new session with the given credentials", err)
 		return err
 	}
-
+	LogInfo(wc.logger, fmt.Sprintf("%d records requested for ingestion from Prometheus", len(req.Timeseries)))
 	recordMap := make(recordDestinationMap)
 	recordMap, err = wc.convertToRecords(req.Timeseries, recordMap)
 	if err != nil {
@@ -221,6 +223,10 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 				sdkErr = wc.handleSDKErr(req, err, sdkErr)
 			} else {
 				LogInfo(wc.logger, fmt.Sprintf("Successfully wrote %d records to database: %s table: %s", len(writeRecordsInput.Records), database, table))
+				recordsIgnored := getCounterValue(wc.ignoredSamples)
+				if (recordsIgnored > 0) {
+					LogInfo(wc.logger, fmt.Sprintf("%d number of records were rejected for ingestion to Timestream. See Troubleshooting in the README for why these may be rejected, or turn on debug logging for additional info.", recordsIgnored))
+				}
 			}
 			wc.writeExecutionTime.Observe(duration)
 			wc.writeRequests.Inc()
@@ -701,4 +707,13 @@ func (c *Client) Collect(ch chan<- prometheus.Metric) {
 	ch <- c.writeClient.writeRequests
 	ch <- c.queryClient.readRequests
 	ch <- c.queryClient.readExecutionTime
+}
+
+// Get the value of a counter
+func getCounterValue(col prometheus.Collector) int {
+    c := make(chan prometheus.Metric, 1)
+    col.Collect(c)
+    m := prometheusClientModel.Metric{}
+    _ = (<-c).Write(&m)
+    return int(*m.Counter.Value)
 }
