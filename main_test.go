@@ -54,7 +54,6 @@ const (
 	databaseValue         = "bar"
 	assertInputMessage    = "Errors must not occur while marshalling input data."
 	assertResponseMessage = "Error must not occur while reading the response body from the test output."
-	encodedBasicAuth      = "Basic QWxhZGRpbjpPcGVuU2VzYW1l"
 	writeRequestType      = "*prompb.WriteRequest"
 	readRequestType       = "*prompb.ReadRequest"
 	awsCredentialsType    = "*credentials.Credentials"
@@ -70,9 +69,9 @@ var (
 			promlog.AllowedLevel{},
 		),
 		cmpopts.IgnoreFields(promlog.AllowedLevel{}, "o")}
-	mockUnixTime    = time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
-	mockEndUnixTime = mockUnixTime + 30000
-	validTimeSeries = &prompb.TimeSeries{
+		mockUnixTime    = time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+		mockEndUnixTime = mockUnixTime + 30000
+		validTimeSeries = &prompb.TimeSeries{
 		Labels: []*prompb.Label{
 			{
 				Name:  model.MetricNameLabel,
@@ -119,6 +118,7 @@ var (
 	}
 	validWriteRequest = &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{validTimeSeries}}
 	validReadResponse = &prompb.ReadResponse{Results: []*prompb.QueryResult{{Timeseries: []*prompb.TimeSeries{validTimeSeries}}}}
+	encodedBasicAuth  = "Basic " + base64.StdEncoding.EncodeToString([]byte("Aladdin:OpenSesame"))
 	validWriteHeader  = map[string]string{"x-prometheus-remote-write-version": "0.1.0", basicAuthHeader: encodedBasicAuth}
 	validReadHeader   = map[string]string{"x-prometheus-remote-read-version": "0.1.0", basicAuthHeader: encodedBasicAuth}
 )
