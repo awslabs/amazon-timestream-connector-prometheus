@@ -11,7 +11,14 @@
 
 # Stage 1: Build the binary
 FROM amazonlinux:latest AS build_stage
-RUN yum install -y go
+RUN yum update
+RUN yum install gzip tar -y
+ADD https://go.dev/dl/go1.22.3.linux-amd64.tar.gz .
+RUN tar -xvf go1.22.3.linux-amd64.tar.gz
+RUN mv go /usr/local
+ENV PATH="${PATH}:/usr/local/go/bin"
+ENV GOPATH="/go"
+ENV GOBIN="/usr/local/go/bin"
 
 # Set Docker image metadata
 LABEL name="timestream/timestream-prometheus-connector" \

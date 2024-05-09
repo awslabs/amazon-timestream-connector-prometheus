@@ -34,7 +34,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1018,7 +1017,7 @@ func TestReadHandler(t *testing.T) {
 			// Check the response body if the read was successful.
 			if test.expectedStatusCode == http.StatusOK {
 				// Decode and unmarshall the returned response body.
-				actualResponse, err := ioutil.ReadAll(resp.Body)
+				actualResponse, err := io.ReadAll(resp.Body)
 				assert.Nil(t, err, assertResponseMessage)
 
 				reqBuf, err := snappy.Decode(nil, actualResponse)

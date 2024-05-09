@@ -33,7 +33,7 @@ import (
 	"github.com/prometheus/common/promlog/flag"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/alecthomas/kingpin/v2"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -434,7 +434,7 @@ func createWriteHandler(logger log.Logger, writers []writer) func(w http.Respons
 			return
 		}
 
-		compressed, err := ioutil.ReadAll(r.Body)
+		compressed, err := io.ReadAll(r.Body)
 		if err != nil {
 			timestream.LogError(logger, "Error occurred while reading the write request sent by Prometheus.", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -484,7 +484,7 @@ func createReadHandler(logger log.Logger, readers []reader) func(w http.Response
 			return
 		}
 
-		compressed, err := ioutil.ReadAll(r.Body)
+		compressed, err := io.ReadAll(r.Body)
 
 		if err != nil {
 			timestream.LogError(logger, "Error occurred while reading the read request sent by Prometheus.", err)
