@@ -25,7 +25,7 @@ import (
 	"encoding/csv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -120,7 +120,7 @@ func sendRequest(t *testing.T, queries []string) ([][]string, error) {
 		for retries <= 10 {
 			resp, err := httpClient.Do(req)
 			if err == nil {
-				body, err := ioutil.ReadAll(resp.Body)
+				body, err := io.ReadAll(resp.Body)
 				if err != nil {
 					return output, err
 				}
