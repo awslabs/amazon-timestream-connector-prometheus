@@ -33,6 +33,7 @@ import (
 	"testing"
 	"time"
 	"timestream-prometheus-connector/integration"
+	"timestream-prometheus-connector/timestream"
 )
 
 const (
@@ -40,15 +41,17 @@ const (
 	prometheusConfigPath       = "config/prometheus.yml"
 	prometheusDockerImageName  = "prom/prometheus"
 	tlsRootCAPath              = "cert/RootCA.pem"
+	tlsCertificatePath         = "cert/ServerCertificate.crt"
+	tlsPrivateKeyPath          = "cert/ServerPrivateKey.key"
 	tlsServerCertPath          = "cert"
 	connectorDockerImageName   = "timestream-prometheus-connector-docker"
-	connectorDockerImagePath   = "../../resources/timestream-prometheus-connector-docker-image-1.0.0.tar.gz"
 	defaultDatabaseCMD         = "--default-database=tlsDB"
 	defaultTableCMD            = "--default-table=tls"
-	tlsCertificateCMD          = "--tls-certificate=/root/cert/serverCertificate.crt"
-	tlsKeyCMD                  = "--tls-key=/root/cert/serverPrivateKey.key"
-	tlsUnmatchedCertificateCMD = "--tls-certificate=/root/cert/rootCA.pem"
-	tlsInvalidKeyFileCMD       = "--tls-key=/root/cert/invalidPrivateKey.key"
+	tlsCertificateCMD          = "--tls-certificate=/root/cert/ServerCertificate.crt"
+	tlsKeyCMD                  = "--tls-key=/root/cert/ServerPrivateKey.key"
+	tlsUnmatchedCertificateCMD = "--tls-certificate=/root/cert/RootCA.pem"
+	tlsInvalidKeyFileCMD       = "--tls-key=/root/cert/InvalidPrivateKey.key"
+	tlsInvalidKeyPath          = "cert/InvalidPrivateKey.key"
 	region                     = "us-east-1"
 	database                   = "tlsDB"
 	table                      = "tls"
@@ -78,12 +81,17 @@ func TestMain(m *testing.M) {
 }
 
 func TestHttpsSupport(t *testing.T) {
+	// Ensure required testing files exists
+	validateFileExists(t, tlsRootCAPath)
+	validateFileExists(t, tlsCertificatePath)
+	validateFileExists(t, tlsPrivateKeyPath)
+
 	dockerClient, ctx := integration.CreateDockerClient(t)
 
 	bindString := []string{fmt.Sprintf("%s:/root/cert:ro", getAbsolutionPath(t, tlsServerCertPath))}
 
 	connectorConfig := integration.ConnectorContainerConfig{
-		DockerImage:       connectorDockerImagePath,
+		DockerImage:       "../../resources/timestream-prometheus-connector-docker-image-" + timestream.Version + ".tar.gz",
 		ImageName:         connectorDockerImageName,
 		Binds:             bindString,
 		ConnectorCommands: connectorTLSCMDs,
@@ -129,12 +137,15 @@ func TestHttpsSupportWithInvalidCertificate(t *testing.T) {
 		{"test with invalid file type", connectorCMDsWithInvalidFile},
 	}
 
+	// Ensure invalid key file exists
+	validateFileExists(t, tlsInvalidKeyPath)
+
 	bindString := []string{fmt.Sprintf("%s:/root/cert:ro", getAbsolutionPath(t, tlsServerCertPath))}
 
 	dockerClient, ctx := integration.CreateDockerClient(t)
 	for _, test := range invalidTestCase {
 		connectorConfig := integration.ConnectorContainerConfig{
-			DockerImage:       connectorDockerImagePath,
+			DockerImage:       "../../resources/timestream-prometheus-connector-docker-image-" + timestream.Version + ".tar.gz",
 			ImageName:         connectorDockerImageName,
 			Binds:             bindString,
 			ConnectorCommands: test.command,
@@ -148,6 +159,12 @@ func TestHttpsSupportWithInvalidCertificate(t *testing.T) {
 	}
 
 	integration.StopContainer(t, dockerClient, ctx, containerIDs)
+}
+
+// Check wether a file exists.
+func validateFileExists(t *testing.T, path string) {
+	_, err := os.Stat(path)
+	require.NoError(t, err)
 }
 
 // getAbsolutionPath gets the absolution path of the giving file.

@@ -21,9 +21,6 @@ The Prometheus Connector receives and sends time series data between Prometheus 
 - [Developer Documentation](#developer-documentation)
   - [Building the Prometheus Connector from Source](#building-the-prometheus-connector-from-source)
   - [Building the Docker Image](#building-the-docker-image)
-  - [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates)
-    - [Creating the Certificate Authority files](#creating-the-certificate-authority-files)
-    - [Creating the Server Key and Server Certificate](#creating-the-server-key-and-server-certificate)
 - [Troubleshooting](#troubleshooting)
   - [Prometheus Connector Specific Errors](#prometheus-connector-specific-errors)
   - [Write API Errors](#write-api-errors)
@@ -96,7 +93,7 @@ To configure Prometheus to read and write to remote storage, configure the `remo
 
    >  **NOTE**: As a security best practice, it is recommended to regularly [rotate IAM user access keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html#Using_RotateAccessKey).
 
-3. It is recommended to secure the Prometheus requests with TLS encryption. This can be achieved by specifying the certificate authority file in the `tls_config` section for Prometheus' remote read and remote write configuration. To generate self-signed certificates during development see the [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates) section.
+3. With the default configuration, Prometheus uses TLS version 1.2 for `remote_read` and `remote_write` requests. It is recommended to secure the Prometheus requests with mutual TLS encryption in a production environment. This can be achieved by specifying the certificate authority file in the `tls_config` section for Prometheus' remote read and remote write configuration. To generate self-signed certificates during development see the [Creating Self-signed TLS Certificates](integration/tls/README.md#creating-self-signed-tls-certificates) section.
 
    Here is an example of `remote_write` and `remote_read` configuration with TLS, where `RootCA.pem` is within the same directory as the Prometheus configuration file:
 
@@ -155,7 +152,7 @@ It is recommended to secure the Prometheus requests with TLS encryption. To enab
 
 2. Ensure the certificate authority file has been specified in the `tls_config` section within Prometheus' configuration file, see [Prometheus Configuration](#prometheus-configuration) for an example.
 
-To generate self-signed certificates during development see [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates).
+To generate self-signed certificates during development see [Creating Self-signed TLS Certificates](integration/tls/README.md#creating-self-signed-tls-certificates).
 
 For more examples on configuring the Prometheus Connector see [Configuration Options](#configuration-options).
 
@@ -231,7 +228,7 @@ It is recommended to secure the Prometheus requests with HTTPS with TLS encrypti
 
 2. Ensure the certificate authority file has been specified in the `tls_config` section within Prometheus' configuration file, see [Prometheus Configuration](#prometheus-configuration) for an example.
 
-To generate self-signed certificates during development see [Creating Self-signed TLS Certificates](#creating-self-signed-tls-certificates).
+To generate self-signed certificates during development see [Creating Self-signed TLS Certificates](integration/tls/README.md#creating-self-signed-tls-certificates).
 
 To configure the `web.listen-address` option when running the Prometheus Connector through a Docker image, use the `-p` flag to expose the custom endpoint. The following example listens on the custom endpoint `localhost:3080`:
 
@@ -765,106 +762,6 @@ User-Agent: Prometheus Connector/<version> aws-sdk-go/<version> (go<version>; <o
 ## Building the Docker Image
 1. Navigate to the repository’s root directory on a command-line interface.
 2. Run the following command to build the image: `docker buildx build . -t timestream-prometheus-connector-docker`.
-
-## Creating Self-signed TLS Certificates
-
-The following steps generate self-signed TLS certificates using OpenSSL.
-
-> **NOTE**: Self-signed certificates **should not** be used during production, they should only be used during development.
-
-### Creating the Certificate Authority files
-
-Use the following command to generate a private key and the root certificate file for the certificate authority.
-
-```shell
-openssl req -x509 -nodes -new -sha256 -days 365 -newkey rsa:2048 -keyout RootCA.key -out RootCA.pem
-```
-
-This command will prompt the user to enter some information for the certificate. An example of the output is as follows:
-
-```shell
-certificates ❯ openssl req -x509 -nodes -new -sha256 -days 365 -newkey rsa:2048 -keyout RootCA.key -out RootCA.pem
-Generating a 2048 bit RSA private key
-............................+++
-................+++
-writing new private key to 'RootCA.key'
------
-You are about to be asked to enter information that will be incorporated
-into your certificate request.
-What you are about to enter is what is called a Distinguished Name or a DN.
-There are quite a few fields but you can leave some blank
-For some fields there will be a default value,
-If you enter '.', the field will be left blank.
------
-Country Name (2 letter code) []:US
-State or Province Name (full name) []:Washington
-Locality Name (eg, city) []:Seattle
-Organization Name (eg, company) []:Amazon Web Services
-Organizational Unit Name (eg, section) []:
-Common Name (eg, fully qualified host name) []:Private-Root-CA
-Email Address []:
-certificates ❯ 
-```
-
-To provide all the information directly with the `-subj` flag. An example is as follows:
-
-```shell
-openssl req -x509 -nodes -new -sha256 -days 365 -newkey rsa:2048 -keyout RootCA.key -out RootCA.pem -subj "/C=US/ST=Washington/L=Seattle/O=Amazon Web Services/CN=Private-Root-CA"
-```
-
-### Creating the Server Key and Server Certificate
-
-Use the following command to generate a server private key and a certificate signing request:
-
-```shell
-openssl req -days 365 -nodes -newkey rsa:2048 -keyout serverPrivateKey.key -out serverCertificateSigningRequest.csr
-```
-
-This command will prompt the user to enter some information for the certificate. An example of the output is as follows:
-
-```shell
-certificates ❯ openssl req -days 365 -nodes -newkey rsa:2048 -keyout serverPrivateKey.key -out serverCertificateSigningRequest.csr
-Generating a 2048 bit RSA private key
-....................................................................................................................................................................................................+++
-........................+++
-writing new private key to 'serverPrivateKey.key'
------
-You are about to be asked to enter information that will be incorporated
-into your certificate request.
-What you are about to enter is what is called a Distinguished Name or a DN.
-There are quite a few fields but you can leave some blank
-For some fields there will be a default value,
-If you enter '.', the field will be left blank.
------
-Country Name (2 letter code) []:US
-State or Province Name (full name) []:Washington
-Locality Name (eg, city) []:Seattle
-Organization Name (eg, company) []:Amazon Web Services
-Organizational Unit Name (eg, section) []:
-Common Name (eg, fully qualified host name) []:localhost
-Email Address []:
-certificates ❯ 
-```
-
-To provide all the information directly with the `-subj` flag. An example is as follows:
-
-```shell
-openssl req -days 365 -nodes -newkey rsa:2048 -keyout serverPrivateKey.key -out serverCertificateSigningRequest.csr -subj "/C=US/ST=Washington/L=Seattle/O=Amazon Web Services/CN=localhost"
-```
-
-To associate the host name to the server certificate, create a `domain.ext` file with the following content:
-```
-subjectAltName = DNS:localhost
-```
-Store the file at the same location as the `serverCertificateSigningRequest.csr`. This `domain.ext` will be used when generating the self-signed server certificate.
-
-> **NOTE**: The value for DNS is set to **localhost**. This is required when running the Prometheus Connector from a Docker image or from the precompiled binaries.
-
-Use the following command to generate the self-signed server certificate:
-
-```shell
-openssl x509 -req -sha256 -days 365 -in serverCertificateSigningRequest.csr -out serverCertificate.crt -CA RootCA.pem -CAkey RootCA.key -CAcreateserial -extfile domain.ext
-```
 
 # Troubleshooting
 ## Information Logs
