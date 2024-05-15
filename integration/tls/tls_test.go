@@ -33,6 +33,7 @@ import (
 	"testing"
 	"time"
 	"timestream-prometheus-connector/integration"
+	"timestream-prometheus-connector/timestream"
 )
 
 const (
@@ -44,7 +45,6 @@ const (
 	tlsPrivateKeyPath          = "cert/ServerPrivateKey.key"
 	tlsServerCertPath          = "cert"
 	connectorDockerImageName   = "timestream-prometheus-connector-docker"
-	connectorDockerImagePath   = "../../resources/timestream-prometheus-connector-docker-image-1.0.3.tar.gz"
 	defaultDatabaseCMD         = "--default-database=tlsDB"
 	defaultTableCMD            = "--default-table=tls"
 	tlsCertificateCMD          = "--tls-certificate=/root/cert/ServerCertificate.crt"
@@ -91,7 +91,7 @@ func TestHttpsSupport(t *testing.T) {
 	bindString := []string{fmt.Sprintf("%s:/root/cert:ro", getAbsolutionPath(t, tlsServerCertPath))}
 
 	connectorConfig := integration.ConnectorContainerConfig{
-		DockerImage:       connectorDockerImagePath,
+		DockerImage:       "../../resources/timestream-prometheus-connector-docker-image-" + timestream.Version + ".tar.gz",
 		ImageName:         connectorDockerImageName,
 		Binds:             bindString,
 		ConnectorCommands: connectorTLSCMDs,
@@ -145,7 +145,7 @@ func TestHttpsSupportWithInvalidCertificate(t *testing.T) {
 	dockerClient, ctx := integration.CreateDockerClient(t)
 	for _, test := range invalidTestCase {
 		connectorConfig := integration.ConnectorContainerConfig{
-			DockerImage:       connectorDockerImagePath,
+			DockerImage:       "../../resources/timestream-prometheus-connector-docker-image-" + timestream.Version + ".tar.gz",
 			ImageName:         connectorDockerImageName,
 			Binds:             bindString,
 			ConnectorCommands: test.command,
