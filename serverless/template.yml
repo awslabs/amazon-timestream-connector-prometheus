@@ -22,11 +22,16 @@ Parameters:
     MinValue: 128
     MaxValue: 8192
     Description: "The memory size of Lambda function."
-  TimeoutInMillis:
+  ApiGatewayTimeoutInMillis:
     Type: Number
     MinValue: 2
     Default: 30000
-    Description: "The amount of time in milliseconds to run the connector on AWS Lambda before timing out."
+    Description: "The maximum amount of time in milliseconds an API Gateway event will wait before timing out."
+  LambdaTimeoutInSeconds:
+    Type: Number
+    MinValue: 3
+    Default: 30
+    Description: "The amount of time in seconds to run the connector on AWS Lambda before timing out."
   ReadThrottlingBurstLimit:
     Type: Number
     Default: 1200
@@ -88,6 +93,7 @@ Resources:
       Description: "Prometheus remote storage connector for Amazon Timestream"
       Handler: "bootstrap"
       MemorySize: !Ref "MemorySize"
+      Timeout: !Ref LambdaTimeoutInSeconds
       Runtime: "provided.al2023"
       Environment:
         Variables:
@@ -102,7 +108,7 @@ Resources:
             ApiId: !Ref APIGateway
             Method: POST
             Path: /write
-            TimeoutInMillis: !Ref TimeoutInMillis
+            TimeoutInMillis: !Ref ApiGatewayTimeoutInMillis
             RouteSettings:
               ThrottlingBurstLimit: !Ref "WriteThrottlingBurstLimit"
 
@@ -112,7 +118,7 @@ Resources:
             ApiId: !Ref APIGateway
             Method: POST
             Path: /read
-            TimeoutInMillis: !Ref TimeoutInMillis
+            TimeoutInMillis: !Ref ApiGatewayTimeoutInMillis
             RouteSettings:
               ThrottlingBurstLimit: !Ref "ReadThrottlingBurstLimit"
 

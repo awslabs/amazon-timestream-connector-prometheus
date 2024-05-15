@@ -53,7 +53,8 @@ When deploying your connector using one-click deployment the following parameter
 - LogLevel
 - MemorySize
 - ReadThrottlingBurstLimit
-- TimeoutInMillis
+- ApiGatewayTimeoutInMillis
+- LambdaTimeoutInSeconds
 - WriteThrottlingBurstLimit
 
 The `DefaultDatabase`, `DefaultTable` and `LogLevel` may be altered to fit your needs, all other parameters will not require altering for the standard deployment. The `DefaultDatabase` and `DefaultTable` determine the ingestion destination, and `LogLevel` can be set to `info`, `debug`, `warn`, or `error`.
@@ -98,7 +99,7 @@ The steps to deploy a template are as follows:
     To override default parameter values use the `--parameter-overrides` argument and provide a string with format ParameterKey=ParameterValue. For example:
 
     ```shell
-    sam deploy --parameter-overrides "TimeoutInMillis=60000 DefaultDatabase=<CustomDatabase>"
+    sam deploy --parameter-overrides "LambdaTimeoutInSeconds=50 ApiGatewayTimeoutInMillis=60000 DefaultDatabase=<CustomDatabase>"
     ```
     You can view the full set of parameters defined for `serverless/template.yml` below, in [AWS Lambda Configuration Options](#aws-lambda-configuration-options).
 
@@ -213,7 +214,8 @@ Follow the verification steps in [README.md#verification](../README.md#verificat
 | DefaultDatabase   		| The Prometheus label containing the database name.           | PrometheusDatabase                 |
 | DefaultTable      		| The Prometheus label containing the table name.              | PrometheusMetricsTable                    |
 | MemorySize                | The memory size of the AWS Lambda function.                  | 512                             |
-| TimeoutInMillis           | The amount of time in milliseconds to run the connector on AWS Lambda before timing out. | 30000                           |
+| ApiGatewayTimeoutInMillis      | The maximum amount of time in milliseconds an API Gateway event will wait before timing out. | 30000                           |
+| LambdaTimeoutInSeconds    | The amount of time in seconds to run the connector on AWS Lambda before timing out. | 30                           |
 | ReadThrottlingBurstLimit  | The number of burst read requests per second that API Gateway permits. | 1200                             |
 | WriteThrottlingBurstLimit | The number of burst write requests per second that API Gateway permits. | 1200                             |
 
@@ -641,13 +643,23 @@ See the list below for parameters whose values that may result in resource confl
 
 ### AWS Lambda Timeout or HTTP Status 404 Not Found
 
-If the Lambda `TimeoutInMillis` parameter is too small or a PromQL query exceeds the `TimeoutInMillis` value a 
+If the Lambda `ApiGatewayTimeoutInMillis` parameter is too small or a PromQL query exceeds the `ApiGatewayTimeoutInMillis` value a 
 
 ```shell
 remote_read: remote server https://api-id.execute-api.region.amazonaws.com/dev/read returned HTTP status 404 Not Found: {"message":"Not Found"}
 ``` 
 
-error could be returned. If you encounter this error first try overriding the default value for `TimeoutInMillis` (30 seconds) with a greater value using the [`--parameter-overrides` option for `sam deploy`](#aws-cli-deployment).
+error could be returned. If you encounter this error first try overriding the default value for `ApiGatewayTimeoutInMillis` (30 seconds) with a greater value using the [`--parameter-overrides` option for `sam deploy`](#aws-cli-deployment).
+
+### Task Timed Out Error
+
+If the `LambdaTimeoutInSeconds` value is too small then a
+
+```shell
+Task timed out after <seconds> seconds
+```
+
+error could be logged. If you encounter this error try increasing the value of `LambdaTimeoutInSeconds` (30 seconds) with a greater value using the [`--parameter-overrides` option for `sam deploy`](#aws-cli-deployment).
 
 ## Caveats
 
