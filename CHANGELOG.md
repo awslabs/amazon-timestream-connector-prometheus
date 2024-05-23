@@ -4,19 +4,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.0.3](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.0.3) - 2024-05-01
+## [v1.1.0](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.1.0) - 2024-05-23
+### Fixed
+- [Make deployment user permissions more specific](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/68)
 
+### Dependencies
+- [Update vulnerable dependencies](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/64)
+
+### Added
+- [Add Documentation for Generating Keys and Certificates for TLS Tests](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/66)
+- [Add Lambda timeout & refactor timeout names](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/65)
+
+### Removed
+- [Remove reference to SigV4 issue](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/67)
+- [Removing Not Needed Certificates](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/63)
+
+
+## [v1.0.3](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.0.3) - 2024-05-01
 ### Added
 - [Add Logging for Ignored Records and Records Requested for Ingestion](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/60)
 
 ## [v1.0.2](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.0.2) - 2024-04-30
-
 ### Added
 - [Add documentation for API Gateway endpoints](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/54)
 - [Adding Log Level to Environment Variables in CFN Template](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/55)
 - [Log number of failed records and update logging documentation](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/56)
+
 ### Changed
 - [Changing Logging of Records and Errors to Debug Mode](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/57)
+
 ### Dependencies
 - [Bump golang.org/x/net from 0.18.0 to 0.23.0 in the go_modules group across 1 directory](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/53)
 
