@@ -19,7 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Remove reference to SigV4 issue](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/67)
 - [Removing Not Needed Certificates](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/63)
 
-
 ## [v1.0.3](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.0.3) - 2024-05-01
 ### Added
 - [Add Logging for Ignored Records and Records Requested for Ingestion](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/60)
@@ -49,7 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 - [Bump github.com/docker/docker from 24.0.7+incompatible to 24.0.9+incompatible](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/46)
-
 
 ## [v1.0.0](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.0.0) - 2024-03-14
 ### Added
