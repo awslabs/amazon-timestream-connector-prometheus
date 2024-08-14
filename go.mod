@@ -6,7 +6,7 @@ require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/aws/aws-lambda-go v1.46.0
 	github.com/aws/aws-sdk-go v1.52.5
-	github.com/docker/docker v25.0.6+incompatible
+	github.com/docker/docker v27.1.2+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/go-kit/log v0.2.1
 	github.com/gogo/protobuf v1.3.2
@@ -36,6 +36,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/term v0.5.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
