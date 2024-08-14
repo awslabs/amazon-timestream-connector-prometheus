@@ -56,7 +56,7 @@ jobs:
           GO111MODULE: on
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.54
+          version: v1.59
           args: --exclude ".Log(.*)|format.Set|level.Set" --timeout=2m
