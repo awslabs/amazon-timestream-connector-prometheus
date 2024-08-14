@@ -16,6 +16,14 @@ package integration
 
 import (
 	"context"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"strconv"
+	"testing"
+	"time"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/timestreamwrite"
 	"github.com/docker/docker/api/types"
@@ -24,13 +32,6 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"io"
-	"net"
-	"net/http"
-	"os"
-	"strconv"
-	"testing"
-	"time"
 )
 
 type PrometheusContainerConfig struct {
@@ -80,7 +81,7 @@ func StartPrometheus(t *testing.T, cli *client.Client, ctx context.Context, conf
 	}, nil, nil, "")
 
 	require.NoError(t, err)
-	assert.Nil(t, cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}))
+	assert.Nil(t, cli.ContainerStart(ctx, resp.ID, container.StartOptions{}))
 
 	return resp.ID
 }
@@ -114,7 +115,7 @@ func StartConnector(t *testing.T, cli *client.Client, ctx context.Context, confi
 		Cmd:   config.ConnectorCommands,
 	}, hostConfig, nil, nil, "")
 	require.NoError(t, err)
-	require.NoError(t, cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}))
+	require.NoError(t, cli.ContainerStart(ctx, resp.ID, container.StartOptions{}))
 
 	return resp.ID
 }
@@ -123,7 +124,7 @@ func StartConnector(t *testing.T, cli *client.Client, ctx context.Context, confi
 func StopContainer(t *testing.T, cli *client.Client, ctx context.Context, containerIDs []string) {
 	for i := range containerIDs {
 		assert.Nil(t, cli.ContainerStop(ctx, containerIDs[i], container.StopOptions{}))
-		assert.Nil(t, cli.ContainerRemove(ctx, containerIDs[i], types.ContainerRemoveOptions{RemoveVolumes: true, Force: true}))
+		assert.Nil(t, cli.ContainerRemove(ctx, containerIDs[i], container.RemoveOptions{RemoveVolumes: true, Force: true}))
 	}
 }
 
