@@ -59,5 +59,5 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           skip-cache: true
-          version: v1.59.1
+          version: v1.60.1
           args: --exclude ".Log(.*)|format.Set|level.Set" --timeout=2m
