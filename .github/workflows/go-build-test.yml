@@ -27,7 +27,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: 'stable'
           cache: false
@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: 'stable'
           cache: false
@@ -56,7 +56,8 @@ jobs:
           GO111MODULE: on
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.54
+          skip-cache: true
+          version: v1.60.1
           args: --exclude ".Log(.*)|format.Set|level.Set" --timeout=2m
