@@ -27,5 +27,6 @@ const (
 	invalidMatcher        = 10
 	value                 = 1.0
 	numRecords            = 100
+	largeNumRecords       = 452
 	memStoreRetentionHour = 5
 )

@@ -25,8 +25,6 @@ The Prometheus Connector receives and sends time series data between Prometheus 
   - [Prometheus Connector Specific Errors](#prometheus-connector-specific-errors)
   - [Write API Errors](#write-api-errors)
   - [Query API Errors](#query-api-errors)
-- [Limitations](#limitations)
-  - [Maximum Prometheus Samples Per Remote Write Request](#maximum-prometheus-samples-per-remote-write-request)
 - [Caveats](#caveats)
   - [Unsupported SigV4 Authentication](#unsupported-sigv4-authentication)
   - [Unsupported Temporary Security Credentials](#unsupported-temporary-security-credentials)
@@ -66,8 +64,6 @@ The Prometheus Connector is available in the following formats:
 ### Prometheus Configuration
 
 To configure Prometheus to read and write to remote storage, configure the `remote_read` and `remote_write` sections in `prometheus.yml`. To learn more, see the [remote read](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_read) and [remote write](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write) sections on Prometheus' configuration page.
-
-> **NOTE**: It is recommended to use the default number of samples per write request through `max_samples_per_send`. For more details see [Maximum Prometheus Samples Per Remote Write Request](#maximum-prometheus-samples-per-remote-write-request).
 
 1. Configure Prometheus' remote read and remote write destination by setting the `url` options to the Prometheus Connector's listening URLs, e.g. `"http://localhost:9201/write"`.
 
@@ -952,7 +948,7 @@ All connector-specific errors can be found in [`errors/errors.go`](./errors/erro
 | `AccessDeniedException` | 403 | You are not authorized to perform this action | Ensure you have sufficient access to Amazon Timestream. |
 | `ResourceNotFoundException` | 404 | The operation tried to access a non-existent resource. | Specify the resource correctly, or check whether its status is not ACTIVE. |
 | `ConflictException` | 409 | Amazon Timestream was unable to process this request because it contains a resource that already exists. | Update the request with correct resource. |
-| `RejectedRecordsException` | 419 | Amazon Timestream will throw this exception in the following cases: <br> 1. Records with duplicate data where there are multiple records with the same dimensions, timestamps, and measure names but different measure values.<br>2. Records with timestamps that lie outside the retention duration of the memory store. <br>3. Records with dimensions or measures that exceed the Amazon Timestream defined limits. | 1. Check and process the data to ensure that there are no different measure values at the same timestamp given other labels/filters are the same. <br>2. Check or update the retention duration in database. <br>3. Set the maximum number of samples per write request in prometheus.yml to 100. |
+| `RejectedRecordsException` | 419 | Amazon Timestream will throw this exception in the following cases: <br> 1. Records with duplicate data where there are multiple records with the same dimensions, timestamps, and measure names but different measure values.<br>2. Records with timestamps that lie outside the retention duration of the memory store. <br>3. Records with dimensions or measures that exceed the Amazon Timestream defined limits. | 1. Check and process the data to ensure that there are no different measure values at the same timestamp given other labels/filters are the same. <br>2. Check or update the retention duration in database. |
 | `InvalidEndpointException` | 421 | The requested endpoint was invalid. | Check whether the endpoint is NIL or in an incorrect format. |
 | `ThrottlingException` | 429 | Too many requests were made by a user exceeding service quotas. The request was throttled. | Continue to send data at the same (or higher) throughput. Go to [Data Ingestion](https://docs.aws.amazon.com/timestream/latest/developerguide/data-ingest.html) for more information. |
 | `InternalServerException` | 500 | Amazon Timestream was unable to fully process this request because of an internal server error. | Please send the request again later. |
@@ -968,13 +964,6 @@ All connector-specific errors can be found in [`errors/errors.go`](./errors/erro
 | `InvalidEndpointException` | 421 | The requested endpoint was invalid | Check whether the endpoint is NULL or in an incorrect format. |
 | `ThrottlingException` | 429 | The request was denied due to request throttling. | Continue to send queries at the same (or higher) throughput. |
 | `InternalServerException` | 500 | Amazon Timestream was unable to fully process this request because of an internal server error. | Please send the request again later. |
-
-# Limitations
-
-### Maximum Prometheus Samples Per Remote Write Request
-
-Ingesting more time series than the `Records per WriteRecords API request` value specified in the [Timestream Quotas](https://docs.aws.amazon.com/timestream/latest/developerguide/ts-limits.html) will return a `RejectedRecordsException`, and none of the time series in the Prometheus write request will be ingested to Timestream.
-It is recommended to use the default value for `max_samples_per_send` in Prometheus' [remote write configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write).
 
 # Caveats
 
