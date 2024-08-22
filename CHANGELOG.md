@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.0](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.2.0) - 2024-08-22
+### Dependencies
+- [Update docker to 25.0.6 & remove binary](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/74)
+
+### Added
+- [Add write buffering](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/76)
+
+### Changed
+- [Update S3 Build Artifacts Directory](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/71)
+- [Change designer links to composer links](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/70)
+
 ## [v1.1.0](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.1.0) - 2024-05-23
 ### Fixed
 - [Make deployment user permissions more specific](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/68)
