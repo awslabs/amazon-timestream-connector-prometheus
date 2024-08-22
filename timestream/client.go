@@ -22,7 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
-    "github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/timestreamquery"
 	"github.com/aws/aws-sdk-go/service/timestreamquery/timestreamqueryiface"
@@ -45,8 +45,8 @@ type labelOperation string
 type longMetricsOperation func(measureValueName string) (labelOperation, error)
 
 var addUserAgent = request.NamedHandler {
-    Name: "UserAgentHandler",
-    Fn: request.MakeAddToUserAgentHandler("Prometheus Connector", Version),
+	Name: "UserAgentHandler",
+	Fn: request.MakeAddToUserAgentHandler("Prometheus Connector", Version),
 }
 
 // Store the initialization function calls to allow unit tests to mock the creation of real clients.
@@ -55,7 +55,7 @@ var initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamW
 	if err != nil {
 		return nil, err
 	}
-    sess.Handlers.Build.PushFrontNamed(addUserAgent)
+	sess.Handlers.Build.PushFrontNamed(addUserAgent)
 	return timestreamwrite.New(sess), nil
 }
 var initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
@@ -63,7 +63,7 @@ var initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQ
 	if err != nil {
 		return nil, err
 	}
-    sess.Handlers.Build.PushFrontNamed(addUserAgent)
+	sess.Handlers.Build.PushFrontNamed(addUserAgent)
 	return timestreamquery.New(sess), nil
 }
 
@@ -82,6 +82,7 @@ var initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQ
 type recordDestinationMap map[string]map[string][]*timestreamwrite.Record
 
 const (
+	maxWriteBatchLength         int            = 100
 	maxMeasureNameLength        int            = 60
 	ignored                     labelOperation = "Ignored"
 	failed                      labelOperation = "Failed"
@@ -211,25 +212,34 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 	var sdkErr error
 	for database, tableMap := range recordMap {
 		for table, records := range tableMap {
-			writeRecordsInput := &timestreamwrite.WriteRecordsInput{
-				DatabaseName: aws.String(database),
-				TableName:    aws.String(table),
-				Records:      records,
-			}
-			begin := time.Now()
-			_, err = wc.timestreamWrite.WriteRecords(writeRecordsInput)
-			duration := time.Since(begin).Seconds()
-			if err != nil {
-				sdkErr = wc.handleSDKErr(req, err, sdkErr)
-			} else {
-				LogInfo(wc.logger, fmt.Sprintf("Successfully wrote %d records to database: %s table: %s", len(writeRecordsInput.Records), database, table))
-				recordsIgnored := getCounterValue(wc.ignoredSamples)
-				if (recordsIgnored > 0) {
-					LogInfo(wc.logger, fmt.Sprintf("%d number of records were rejected for ingestion to Timestream. See Troubleshooting in the README for why these may be rejected, or turn on debug logging for additional info.", recordsIgnored))
+			// Timestream will return an error if more than 100 records are sent in a batch.
+			// Therefore, records should be chunked if there are more than 100 of them
+			var chunkEndIndex int
+			for chunkStartIndex := 0; chunkStartIndex < len(records); chunkStartIndex += maxWriteBatchLength {
+				chunkEndIndex += maxWriteBatchLength
+				if chunkEndIndex > len(records) {
+					chunkEndIndex = len(records)
 				}
+				writeRecordsInput := &timestreamwrite.WriteRecordsInput{
+					DatabaseName: aws.String(database),
+					TableName:    aws.String(table),
+					Records:      records[chunkStartIndex:chunkEndIndex],
+				}
+				begin := time.Now()
+				_, err = wc.timestreamWrite.WriteRecords(writeRecordsInput)
+				duration := time.Since(begin).Seconds()
+				if err != nil {
+					sdkErr = wc.handleSDKErr(req, err, sdkErr)
+				} else {
+					LogInfo(wc.logger, fmt.Sprintf("Successfully wrote %d records to database: %s table: %s", len(writeRecordsInput.Records), database, table))
+					recordsIgnored := getCounterValue(wc.ignoredSamples)
+					if (recordsIgnored > 0) {
+						LogInfo(wc.logger, fmt.Sprintf("%d number of records were rejected for ingestion to Timestream. See Troubleshooting in the README for why these may be rejected, or turn on debug logging for additional info.", recordsIgnored))
+					}
+				}
+				wc.writeExecutionTime.Observe(duration)
+				wc.writeRequests.Inc()
 			}
-			wc.writeExecutionTime.Observe(duration)
-			wc.writeRequests.Inc()
 		}
 	}
 
@@ -297,7 +307,7 @@ func (qc *QueryClient) Read(req *prompb.ReadRequest, credentials *credentials.Cr
 func (wc *WriteClient) handleSDKErr(req *prompb.WriteRequest, currErr error, errToReturn error) error {
 	requestError, ok := currErr.(awserr.RequestFailure)
 	if !ok {
-        LogError(wc.logger, fmt.Sprintf("Error occurred while ingesting Timestream Records. %d records failed to be written", len(req.Timeseries)), currErr)
+		LogError(wc.logger, fmt.Sprintf("Error occurred while ingesting Timestream Records. %d records failed to be written", len(req.Timeseries)), currErr)
 		return errors.NewSDKNonRequestError(currErr)
 	}
 
@@ -711,9 +721,9 @@ func (c *Client) Collect(ch chan<- prometheus.Metric) {
 
 // Get the value of a counter
 func getCounterValue(collector prometheus.Collector) int {
-    channel := make(chan prometheus.Metric, 1) // 1 denotes no Vector
-    collector.Collect(channel)
-    metric := prometheusClientModel.Metric{}
-    _ = (<-channel).Write(&metric)
-    return int(*metric.Counter.Value)
+	channel := make(chan prometheus.Metric, 1) // 1 denotes no Vector
+	collector.Collect(channel)
+	metric := prometheusClientModel.Metric{}
+	_ = (<-channel).Write(&metric)
+	return int(*metric.Counter.Value)
 }

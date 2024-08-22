@@ -172,8 +172,6 @@ To view the full set of `sam deploy` options see the [sam deploy documentation](
    remote_write:
    # Update the value to the InvokeWriteURL returned when deploying the stack.
    - url: "InvokeWriteURL"
-     queue_config:
-       max_samples_per_send: 100
 
      # Update the username and password to a valid IAM access key and secret access key.
      basic_auth:

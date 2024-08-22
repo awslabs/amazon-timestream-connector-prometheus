@@ -3,3 +3,4 @@
 *.zip
 integration/tls/cert
 resources
+timestream-prometheus-connector

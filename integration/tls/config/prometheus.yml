@@ -11,8 +11,6 @@ scrape_configs:
 
 remote_write:
 - url: "https://host.docker.internal:9201/write"
-  queue_config:
-    max_samples_per_send: 100
 
   tls_config:
     ca_file: "/etc/prometheus/RootCA.pem"
