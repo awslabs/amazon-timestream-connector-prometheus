@@ -175,6 +175,7 @@ func setUp() ([]string, *connectionConfig) {
 		defaultDatabase: "foo",
 		defaultTable:    "bar",
 		enableLogging:   true,
+		enableSigV4Auth: true,
 		listenAddr:      ":9201",
 		maxRetries:      3,
 		telemetryPath:   "/metrics",
@@ -365,6 +366,7 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 			lambdaOptions: []lambdaEnvOptions{
 				{key: defaultTableConfig.envFlag, value: tableValue},
 				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
+				{key: enableSigV4AuthConfig.envFlag, value: "false"},
 			},
 			inputRequest: events.APIGatewayProxyRequest{
 				IsBase64Encoded: true,
@@ -379,6 +381,7 @@ func TestLambdaHandlerPrepareRequest(t *testing.T) {
 			lambdaOptions: []lambdaEnvOptions{
 				{key: defaultTableConfig.envFlag, value: tableValue},
 				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
+				{key: enableSigV4AuthConfig.envFlag, value: "false"},
 			},
 			inputRequest: events.APIGatewayProxyRequest{
 				IsBase64Encoded: true,
@@ -658,6 +661,7 @@ func TestParseEnvironmentVariables(t *testing.T) {
 				clientConfig:              &clientConfig{region: "us-east-1"},
 				promlogConfig:             defaultLogConfig,
 				enableLogging:             true,
+				enableSigV4Auth:           true,
 				failOnInvalidSample:       false,
 				failOnLongMetricLabelName: false,
 				maxRetries:                3,

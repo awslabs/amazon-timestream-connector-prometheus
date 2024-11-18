@@ -24,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
@@ -83,6 +84,7 @@ type connectionConfig struct {
 	defaultDatabase           string
 	defaultTable              string
 	enableLogging             bool
+	enableSigV4Auth           bool
 	failOnLongMetricLabelName bool
 	failOnInvalidSample       bool
 	listenAddr                string
@@ -145,9 +147,20 @@ func lambdaHandler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyRes
 
 	logger := cfg.createLogger()
 
-	awsCredentials, ok := parseBasicAuth(req.Headers[basicAuthHeader])
-	if !ok {
-		return createErrorResponse(errors.NewParseBasicAuthHeaderError().(*errors.ParseBasicAuthHeaderError).Message())
+	var awsCredentials *credentials.Credentials
+	var ok bool
+
+	// If SigV4 authentication has been enabled, such as when write requests originate
+	// from the OpenTelemetry collector, credentials will be taken from the local environment.
+	// Otherwise, basic auth is used for AWS credentials
+	if cfg.enableSigV4Auth {
+		sess := session.Must(session.NewSession())
+		awsCredentials = sess.Config.Credentials
+	} else {
+		awsCredentials, ok = parseBasicAuth(req.Headers[basicAuthHeader])
+		if !ok {
+			return createErrorResponse(errors.NewParseBasicAuthHeaderError().(*errors.ParseBasicAuthHeaderError).Message())
+		}
 	}
 
 	awsConfigs := cfg.buildAWSConfig()
@@ -280,7 +293,7 @@ func (cfg *connectionConfig) createLogger() (logger log.Logger) {
 }
 
 // parseBoolFromStrings parses the boolean configuration options from the strings in connectionConfig.
-func (cfg *connectionConfig) parseBoolFromStrings(enableLogging, failOnLongMetricLabelName, failOnInvalidSample string) error {
+func (cfg *connectionConfig) parseBoolFromStrings(enableLogging, failOnLongMetricLabelName, failOnInvalidSample, enableSigV4Auth string) error {
 	var err error
 
 	cfg.enableLogging, err = strconv.ParseBool(enableLogging)
@@ -298,6 +311,13 @@ func (cfg *connectionConfig) parseBoolFromStrings(enableLogging, failOnLongMetri
 	}
 
 	cfg.failOnInvalidSample, err = strconv.ParseBool(failOnInvalidSample)
+	if err != nil {
+		timestreamError := errors.NewParseSampleOptionError(failOnInvalidSample)
+		fmt.Println(timestreamError.Error())
+		return timestreamError
+	}
+
+	cfg.enableSigV4Auth, err = strconv.ParseBool(enableSigV4Auth)
 	if err != nil {
 		timestreamError := errors.NewParseSampleOptionError(failOnInvalidSample)
 		fmt.Println(timestreamError.Error())
@@ -328,7 +348,7 @@ func parseEnvironmentVariables() (*connectionConfig, error) {
 	cfg.defaultTable = getOrDefault(defaultTableConfig)
 
 	var err error
-	err = cfg.parseBoolFromStrings(getOrDefault(enableLogConfig), getOrDefault(failOnLabelConfig), getOrDefault(failOnInvalidSampleConfig))
+	err = cfg.parseBoolFromStrings(getOrDefault(enableLogConfig), getOrDefault(failOnLabelConfig), getOrDefault(failOnInvalidSampleConfig), getOrDefault(enableSigV4AuthConfig))
 	if err != nil {
 		return nil, err
 	}
@@ -357,6 +377,7 @@ func parseFlags() *connectionConfig {
 	}
 
 	var enableLogging string
+	var enableSigV4Auth string
 	var failOnLongMetricLabelName string
 	var failOnInvalidSample string
 
@@ -373,6 +394,7 @@ func parseFlags() *connectionConfig {
 		Default(failOnInvalidSampleConfig.defaultValue).StringVar(&failOnInvalidSample)
 	a.Flag(certificateConfig.flag, "TLS server certificate file.").Default(certificateConfig.defaultValue).StringVar(&cfg.certificate)
 	a.Flag(keyConfig.flag, "TLS server private key file.").Default(keyConfig.defaultValue).StringVar(&cfg.key)
+	a.Flag(enableSigV4AuthConfig.flag, "Whether to enable SigV4 authentication with the API Gateway. Default to 'false'.").Default(enableSigV4AuthConfig.defaultValue).StringVar(&enableSigV4Auth)
 
 	flag.AddFlags(a, &cfg.promlogConfig)
 
@@ -381,7 +403,7 @@ func parseFlags() *connectionConfig {
 		os.Exit(1)
 	}
 
-	if err := cfg.parseBoolFromStrings(enableLogging, failOnLongMetricLabelName, failOnInvalidSample); err != nil {
+	if err := cfg.parseBoolFromStrings(enableLogging, failOnLongMetricLabelName, failOnInvalidSample, enableSigV4Auth); err != nil {
 		os.Exit(1)
 	}
 
