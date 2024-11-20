@@ -27,6 +27,13 @@ Parameters:
     MinValue: 2
     Default: 30000
     Description: "The maximum amount of time in milliseconds an API Gateway event will wait before timing out."
+  EnableSigV4Auth:
+    Type: "String"
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "true"
+    Description: "Whether to enable SigV4 authentication with the API Gateway. Defaults to false."
   LambdaTimeoutInSeconds:
     Type: Number
     MinValue: 3
@@ -57,6 +64,9 @@ Parameters:
     Default: "info"
     Description: "The output level for logs. Valid values include info, warn, debug, error"
 
+Conditions:
+  SigV4AuthEnabled: !Equals [!Ref EnableSigV4Auth, "true"]
+
 Resources:
   IAMLambdaRole:
     Type: "AWS::IAM::Role"
@@ -82,60 +92,106 @@ Resources:
                   - "logs:PutLogEvents"
                 Resource:
                   Fn::Sub: "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/PrometheusTimestreamConnector-LambdaFunction-*:*"
+              - Effect: "Allow"
+                Action:
+                  - "timestream:DescribeEndpoints"
+                Resource: "*"
+              - Effect: "Allow"
+                Action:
+                  - "timestream:WriteRecords"
+                  - "timestream:Select"
+                Resource: !Sub "arn:aws:timestream:${AWS::Region}:${AWS::AccountId}:database/${DefaultDatabase}/table/${DefaultTable}"
 
   LambdaFunction:
     Type: "AWS::Serverless::Function"
     Properties:
-      Role: !GetAtt "IAMLambdaRole.Arn"
+      Role: !GetAtt IAMLambdaRole.Arn
       CodeUri: 
-          Bucket: !Sub 'timestreamassets-${AWS::Region}'
-          Key: "timestream-prometheus-connector/timestream-prometheus-connector-linux-amd64-1.2.0.zip"
+        Bucket: !Sub 'timestreamassets-${AWS::Region}'
+        Key: "timestream-prometheus-connector/timestream-prometheus-connector-linux-amd64-1.2.0.zip"
       Description: "Prometheus remote storage connector for Amazon Timestream"
       Handler: "bootstrap"
-      MemorySize: !Ref "MemorySize"
+      MemorySize: !Ref MemorySize
       Timeout: !Ref LambdaTimeoutInSeconds
       Runtime: "provided.al2023"
       Environment:
         Variables:
-          default_database: !Ref "DefaultDatabase"
-          default_table: !Ref "DefaultTable"
-          region: !Ref "AWS::Region"
-          log_level: !Ref "LogLevel"
-      Events:
-        WriteApi:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref APIGateway
-            Method: POST
-            Path: /write
-            TimeoutInMillis: !Ref ApiGatewayTimeoutInMillis
-            RouteSettings:
-              ThrottlingBurstLimit: !Ref "WriteThrottlingBurstLimit"
-
-        ReadApi:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref APIGateway
-            Method: POST
-            Path: /read
-            TimeoutInMillis: !Ref ApiGatewayTimeoutInMillis
-            RouteSettings:
-              ThrottlingBurstLimit: !Ref "ReadThrottlingBurstLimit"
+          default_database: !Ref DefaultDatabase
+          default_table: !Ref DefaultTable
+          region: !Ref AWS::Region
+          log_level: !Ref LogLevel
+          enable_sigv4_auth: !Ref EnableSigV4Auth
 
   APIGateway:
-    Type: "AWS::Serverless::HttpApi"
+    Type: AWS::ApiGatewayV2::Api
     Properties:
-      StageName: !Ref "APIGatewayStageName"
+      Name: !Sub "${AWS::StackName}-APIGateway"
+      ProtocolType: HTTP
+
+  APIGatewayIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref APIGateway
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt LambdaFunction.Arn
+      PayloadFormatVersion: "2.0"
+      TimeoutInMillis: !Ref ApiGatewayTimeoutInMillis
+
+  WriteRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref APIGateway
+      RouteKey: "POST /write"
+      Target: !Sub "integrations/${APIGatewayIntegration}"
+      AuthorizationType: !If [SigV4AuthEnabled, AWS_IAM, NONE]
+
+  ReadRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref APIGateway
+      RouteKey: "POST /read"
+      Target: !Sub "integrations/${APIGatewayIntegration}"
+      AuthorizationType: !If [SigV4AuthEnabled, AWS_IAM, NONE]
+
+  InvokeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${APIGateway}/*"
+
+  APIGatewayDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+      - WriteRoute
+      - ReadRoute
+    Properties:
+      ApiId: !Ref APIGateway
+
+  APIGatewayStage:
+    Type: AWS::ApiGatewayV2::Stage
+    DependsOn:
+      - APIGatewayDeployment
+      - WriteRoute
+      - ReadRoute
+    Properties:
+      StageName: !Ref APIGatewayStageName
+      ApiId: !Ref APIGateway
+      DeploymentId: !Ref APIGatewayDeployment
+      RouteSettings:
+        "POST /write":
+          ThrottlingBurstLimit: !Ref WriteThrottlingBurstLimit
+        "POST /read":
+          ThrottlingBurstLimit: !Ref ReadThrottlingBurstLimit
 
 Outputs:
   InvokeWriteURL:
     Description: Remote write URL for Prometheus
-    Value:
-      Fn::Sub: "https://${APIGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${APIGatewayStageName}/write"
+    Value: !Sub "https://${APIGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${APIGatewayStageName}/write"
   InvokeReadURL:
     Description: Remote read URL for Prometheus
-    Value:
-      Fn::Sub: "https://${APIGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${APIGatewayStageName}/read"
+    Value: !Sub "https://${APIGateway}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${APIGatewayStageName}/read"
   DefaultDatabase:
     Description: The Prometheus default database name
     Value:

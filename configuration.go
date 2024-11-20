@@ -32,6 +32,7 @@ var (
 	maxRetriesConfig          = &configuration{flag: "max-retries", envFlag: "max_retries", defaultValue: strconv.Itoa(awsClient.DefaultRetryerMaxNumRetries)}
 	defaultDatabaseConfig     = &configuration{flag: "default-database", envFlag: "default_database", defaultValue: ""}
 	defaultTableConfig        = &configuration{flag: "default-table", envFlag: "default_table", defaultValue: ""}
+	enableSigV4AuthConfig     = &configuration{flag: "enable-sigv4-auth", envFlag: "enable_sigv4_auth", defaultValue: "true"}
 	listenAddrConfig          = &configuration{flag: "web.listen-address", envFlag: "", defaultValue: ":9201"}
 	telemetryPathConfig       = &configuration{flag: "web.telemetry-path", envFlag: "", defaultValue: "/metrics"}
 	failOnLabelConfig         = &configuration{flag: "fail-on-long-label", envFlag: "fail_on_long_label", defaultValue: "false"}
