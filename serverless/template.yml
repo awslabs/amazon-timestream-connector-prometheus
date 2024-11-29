@@ -91,7 +91,7 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource:
-                  Fn::Sub: "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/PrometheusTimestreamConnector-LambdaFunction-*:*"
+                  Fn::Sub: "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-LambdaFunction-*:*"
               - Effect: "Allow"
                 Action:
                   - "timestream:DescribeEndpoints"
@@ -106,14 +106,15 @@ Resources:
     Type: "AWS::Serverless::Function"
     Properties:
       Role: !GetAtt IAMLambdaRole.Arn
-      CodeUri: 
+      CodeUri:
         Bucket: !Sub 'timestreamassets-${AWS::Region}'
-        Key: "timestream-prometheus-connector/timestream-prometheus-connector-linux-amd64-1.3.0.zip"
+        Key: "timestream-prometheus-connector/timestream-prometheus-connector-linux-arm64-1.3.0.zip"
       Description: "Prometheus remote storage connector for Amazon Timestream"
       Handler: "bootstrap"
       MemorySize: !Ref MemorySize
       Timeout: !Ref LambdaTimeoutInSeconds
       Runtime: "provided.al2023"
+      Architectures: ["arm64"]
       Environment:
         Variables:
           default_database: !Ref DefaultDatabase
