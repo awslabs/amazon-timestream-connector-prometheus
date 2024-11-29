@@ -580,14 +580,14 @@ func (qc *QueryClient) buildCommands(queries []*prompb.Query) ([]*timestreamquer
 
 			switch matcher.Type {
 			case prompb.LabelMatcher_EQ:
-				matchers = append(matchers, fmt.Sprintf("%s = '%s'", matcherName, matcher.Value))
+				matchers = append(matchers, fmt.Sprintf("\"%s\" = '%s'", matcherName, matcher.Value))
 			case prompb.LabelMatcher_NEQ:
-				matchers = append(matchers, fmt.Sprintf("%s != '%s'", matcherName, matcher.Value))
+				matchers = append(matchers, fmt.Sprintf("\"%s\" != '%s'", matcherName, matcher.Value))
 			case prompb.LabelMatcher_RE:
-				matchers = append(matchers, fmt.Sprintf("REGEXP_LIKE(%s, '%s')", matcherName, matcher.Value))
+				matchers = append(matchers, fmt.Sprintf("REGEXP_LIKE(\"%s\", '%s')", matcherName, matcher.Value))
 				isRelatedToRegex = true
 			case prompb.LabelMatcher_NRE:
-				matchers = append(matchers, fmt.Sprintf("NOT REGEXP_LIKE(%s, '%s')", matcherName, matcher.Value))
+				matchers = append(matchers, fmt.Sprintf("NOT REGEXP_LIKE(\"%s\", '%s')", matcherName, matcher.Value))
 				isRelatedToRegex = true
 			default:
 				err := errors.NewUnknownMatcherError()
@@ -615,7 +615,12 @@ func (qc *QueryClient) buildCommands(queries []*prompb.Query) ([]*timestreamquer
 		}
 
 		timestreamQueries = append(timestreamQueries, &timestreamquery.QueryInput{
-			QueryString: aws.String(fmt.Sprintf("SELECT * FROM %s.%s WHERE %v", qc.client.defaultDataBase, qc.client.defaultTable, strings.Join(matchers, " AND "))),
+			QueryString: aws.String(fmt.Sprintf(
+				"SELECT * FROM \"%s\".\"%s\" WHERE %s",
+				qc.client.defaultDataBase,
+				qc.client.defaultTable,
+				strings.Join(matchers, " AND "),
+			)),
 		})
 	}
 

@@ -167,7 +167,7 @@ func TestQueryClientRead(t *testing.T) {
 	}
 
 	queryInput := &timestreamquery.QueryInput{
-		QueryString: aws.String(fmt.Sprintf("SELECT * FROM %s.%s WHERE %s = '%s' AND %s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)",
+		QueryString: aws.String(fmt.Sprintf("SELECT * FROM \"%s\".\"%s\" WHERE \"%s\" = '%s' AND %s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)",
 			mockDatabaseName, mockTableName, measureNameColumnName, metricName, timeColumnName, startUnixInSeconds, endUnixInSeconds)),
 	}
 
@@ -264,7 +264,7 @@ func TestQueryClientRead(t *testing.T) {
 
 	expectedBuildCommand := []*timestreamquery.QueryInput{
 		{
-			QueryString: aws.String(fmt.Sprintf("SELECT * FROM %s.%s WHERE %s = '%s' AND quantile != '%s' AND REGEXP_LIKE(job, '%s') AND NOT REGEXP_LIKE(instance, '%s') AND %s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)",
+			QueryString: aws.String(fmt.Sprintf("SELECT * FROM \"%s\".\"%s\" WHERE \"%s\" = '%s' AND \"quantile\" != '%s' AND REGEXP_LIKE(\"job\", '%s') AND NOT REGEXP_LIKE(\"instance\", '%s') AND %s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)",
 				mockDatabaseName, mockTableName, measureNameColumnName, metricName, quantile, jobRegex, instanceRegex, timeColumnName, startUnixInSeconds, endUnixInSeconds)),
 		},
 	}
@@ -308,6 +308,8 @@ func TestQueryClientRead(t *testing.T) {
 			startUnixInSeconds,
 			endUnixInSeconds,
 		)),
+		QueryString: aws.String(fmt.Sprintf("SELECT * FROM \"%s\".\"%s\" WHERE \"%s\" = '%s' AND REGEXP_LIKE(\"job\", '%s') AND %s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)",
+			mockDatabaseName, mockTableName, measureNameColumnName, metricName, invalidRegex, timeColumnName, startUnixInSeconds, endUnixInSeconds)),
 	}
 
 	t.Run("success", func(t *testing.T) {
