@@ -17,16 +17,8 @@ and limitations under the License.
 package tls
 
 import (
+	"context"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/timestreamquery"
-	"github.com/aws/aws-sdk-go/service/timestreamwrite"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"golang.org/x/net/context"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,6 +26,15 @@ import (
 	"time"
 	"timestream-prometheus-connector/integration"
 	"timestream-prometheus-connector/timestream"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/timestreamquery"
+	"github.com/aws/aws-sdk-go-v2/service/timestreamwrite"
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -68,13 +69,18 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	testSession := session.Must(session.NewSession())
-	writeClient := timestreamwrite.New(testSession, aws.NewConfig().WithRegion(region))
-	if err := integration.Setup(writeClient, destinations); err != nil {
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	if err != nil {
+		panic(err)
+	}
+
+	writeClient := timestreamwrite.NewFromConfig(cfg)
+	if err := integration.Setup(ctx, writeClient, destinations); err != nil {
 		panic(err)
 	}
 	code := m.Run()
-	if err := integration.Shutdown(writeClient, destinations); err != nil {
+	if err := integration.Shutdown(ctx, writeClient, destinations); err != nil {
 		panic(err)
 	}
 	os.Exit(code)
@@ -217,12 +223,16 @@ func connectorStatusCheck(t *testing.T, dockerClient *client.Client, ctx context
 
 // getDatabaseRowCount gets the number of rows in a specific table.
 func getDatabaseRowCount(t *testing.T, database string, table string) int {
-	queryInput := &timestreamquery.QueryInput{QueryString: aws.String(fmt.Sprintf("SELECT count(*) from %s.%s", database, table))}
-
-	sess, err := session.NewSession(&aws.Config{Region: aws.String(region)})
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
-	querySvc := timestreamquery.New(sess)
-	out, err := querySvc.Query(queryInput)
+
+	querySvc := timestreamquery.NewFromConfig(cfg)
+	queryInput := &timestreamquery.QueryInput{
+		QueryString: aws.String(fmt.Sprintf("SELECT count(*) from %s.%s", database, table)),
+	}
+
+	out, err := querySvc.Query(ctx, queryInput)
 	require.NoError(t, err)
 
 	count, err := strconv.Atoi(*out.Rows[0].Data[0].ScalarValue)

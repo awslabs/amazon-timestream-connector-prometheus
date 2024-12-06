@@ -15,15 +15,22 @@ and limitations under the License.
 package timestream
 
 import (
+	"context"
 	goErrors "errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/private/protocol"
-	"github.com/aws/aws-sdk-go/service/timestreamquery"
-	"github.com/aws/aws-sdk-go/service/timestreamquery/timestreamqueryiface"
-	"github.com/aws/aws-sdk-go/service/timestreamwrite"
-	"github.com/aws/aws-sdk-go/service/timestreamwrite/timestreamwriteiface"
+	"math"
+	"reflect"
+	"sort"
+	"strconv"
+	"testing"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/timestreamquery"
+	qtypes "github.com/aws/aws-sdk-go-v2/service/timestreamquery/types"
+	"github.com/aws/aws-sdk-go-v2/service/timestreamwrite"
+	wtypes "github.com/aws/aws-sdk-go-v2/service/timestreamwrite/types"
 	"github.com/go-kit/log"
 	"github.com/google/go-cmp/cmp"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,74 +38,97 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"math"
-	"reflect"
-	"sort"
-	"strconv"
-	"testing"
-	"time"
+
 	"timestream-prometheus-connector/errors"
 )
 
 var (
-	mockLogger         = log.NewNopLogger()
-	mockUnixTime       = time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
-	mockCounter        = prometheus.NewCounter(prometheus.CounterOpts{})
-	mockHistogram      = prometheus.NewHistogram(prometheus.HistogramOpts{})
-	mockEndUnixTime    = mockUnixTime + 30000
-	mockAwsConfigs     = &aws.Config{}
-	mockCredentials    = credentials.AnonymousCredentials
+	mockLogger      = log.NewNopLogger()
+	mockUnixTime    = time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+	mockCounter     = prometheus.NewCounter(prometheus.CounterOpts{})
+	mockHistogram   = prometheus.NewHistogram(prometheus.HistogramOpts{})
+	mockEndUnixTime = mockUnixTime + 30000
+	mockCredentials = aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider("mockAccessKey", "mockSecretKey", "mockSessionToken"))
+	mockAwsConfigs  = aws.Config{
+		Credentials: mockCredentials,
+		Region:      "us-east-1",
+	}
 	startUnixInSeconds = mockUnixTime / millisToSecConversionRate
 	endUnixInSeconds   = mockEndUnixTime / millisToSecConversionRate
 )
 
 const (
-	mockTableName     = "prom"
-	mockDatabaseName  = "promDB"
-	mockRegion        = "us-east-1"
-	mockLongMetric    = "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
-	instance          = "localhost:9090"
-	metricName        = "go_gc_duration_seconds"
-	job               = "prometheus"
-	measureValueStr   = "0.001995"
-	invalidValue      = "invalidValue"
-	invalidTime       = "invalidTime"
-	timestamp1        = "2020-10-01 15:02:02.000000000"
-	timestamp2        = "2020-10-01 20:00:00.000000000"
-	quantile          = "0.5"
-	instanceRegex     = "9090*"
-	jobRegex          = "pro*"
-	invalidRegex      = "(?P<login>\\w+)"
-	unixTime1         = 1601564522000
-	unixTime2         = 1601582400000
-	measureValue      = 0.001995
-	invalidMatcher    = 10
-	functionType      = "func(*timestreamquery.QueryOutput, bool) bool"
+	mockTableName    = "prom"
+	mockDatabaseName = "promDB"
+	mockRegion       = "us-east-1"
+	mockLongMetric   = "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
+	instance         = "localhost:9090"
+	metricName       = "go_gc_duration_seconds"
+	job              = "prometheus"
+	measureValueStr  = "0.001995"
+	invalidValue     = "invalidValue"
+	invalidTime      = "invalidTime"
+	timestamp1       = "2020-10-01 15:02:02.000000000"
+	timestamp2       = "2020-10-01 20:00:00.000000000"
+	quantile         = "0.5"
+	instanceRegex    = "9090*"
+	jobRegex         = "pro*"
+	invalidRegex     = "(?P<login>\\w+)"
+	unixTime1        = 1601564522000
+	unixTime2        = 1601582400000
+	measureValue     = 0.001995
+	invalidMatcher   = 10
+	functionType     = "func(*timestreamquery.QueryOutput, bool) bool"
 )
+
+type mockPaginator struct {
+	mock.Mock
+}
+
+func newMockPaginator(timestreamQuery *timestreamquery.Client, queryInput *timestreamquery.QueryInput) *mockPaginator {
+	return &mockPaginator{}
+}
+
+func (m *mockPaginator) HasMorePages() bool {
+	args := m.Called()
+	if result := args.Get(0); result != nil {
+		return result.(bool)
+	}
+	return false
+}
+
+func (m *mockPaginator) NextPage(ctx context.Context) (*timestreamquery.QueryOutput, error) {
+	args := m.Called(ctx)
+	if result := args.Get(0); result != nil {
+		return result.(*timestreamquery.QueryOutput), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 
 type mockTimestreamWriteClient struct {
 	mock.Mock
-	timestreamwriteiface.TimestreamWriteAPI
 }
 
-func (m *mockTimestreamWriteClient) WriteRecords(input *timestreamwrite.WriteRecordsInput) (*timestreamwrite.WriteRecordsOutput, error) {
-	args := m.Called(input)
-	return args.Get(0).(*timestreamwrite.WriteRecordsOutput), args.Error(1)
+func (m *mockTimestreamWriteClient) WriteRecords(
+	ctx context.Context,
+	input *timestreamwrite.WriteRecordsInput,
+	optFns ...func(*timestreamwrite.Options),
+) (*timestreamwrite.WriteRecordsOutput, error) {
+	args := m.Called(ctx, input, optFns)
+	if result := args.Get(0); result != nil {
+		return result.(*timestreamwrite.WriteRecordsOutput), args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
 type mockTimestreamQueryClient struct {
 	mock.Mock
-	timestreamqueryiface.TimestreamQueryAPI
+	*timestreamquery.Client
 }
 
-func (m *mockTimestreamQueryClient) QueryPages(input *timestreamquery.QueryInput, f func(page *timestreamquery.QueryOutput, lastPage bool) bool) error {
-	args := m.Called(input, f)
-	return args.Error(0)
-}
-
-func TestClientNewClient(t *testing.T) {
+func TestClientNewWriteClient(t *testing.T) {
 	client := NewBaseClient(mockDatabaseName, mockTableName)
-	client.NewWriteClient(mockLogger, &aws.Config{Region: aws.String(mockRegion)}, true, true)
+	client.NewWriteClient(mockLogger, aws.Config{Region: mockRegion}, true, true)
 
 	assert.NotNil(t, client.writeClient)
 	assert.Equal(t, mockLogger, client.writeClient.logger)
@@ -108,14 +138,8 @@ func TestClientNewClient(t *testing.T) {
 }
 
 func TestClientNewQueryClient(t *testing.T) {
-	// Mock the instantiation of query client newClients does not create a real query client.
-	queryInput := &timestreamquery.QueryInput{QueryString: aws.String("SELECT 1")}
-	mockTimestreamQueryClient := new(mockTimestreamQueryClient)
-	mockTimestreamQueryClient.On("QueryPages", queryInput,
-		mock.AnythingOfType(functionType)).Return(nil)
-
 	client := NewBaseClient(mockDatabaseName, mockTableName)
-	client.NewQueryClient(mockLogger, &aws.Config{Region: aws.String(mockRegion)})
+	client.NewQueryClient(mockLogger, aws.Config{Region: mockRegion})
 
 	assert.NotNil(t, client.queryClient)
 	assert.Equal(t, mockLogger, client.queryClient.logger)
@@ -148,7 +172,7 @@ func TestQueryClientRead(t *testing.T) {
 		ColumnInfo: createColumnInfo(),
 		NextToken:  aws.String("nextToken"),
 		QueryId:    aws.String("QueryID"),
-		Rows: []*timestreamquery.Row{
+		Rows: []qtypes.Row{
 			{
 				Data: createDatumWithInstance(
 					true,
@@ -174,7 +198,7 @@ func TestQueryClientRead(t *testing.T) {
 					timestamp1),
 			},
 			{
-				Data: []*timestreamquery.Datum{
+				Data: []qtypes.Datum{
 					{ScalarValue: aws.String(instance)},
 					{ScalarValue: aws.String(job)},
 					{ScalarValue: aws.String(measureValueStr)},
@@ -187,7 +211,7 @@ func TestQueryClientRead(t *testing.T) {
 
 	queryOutputWithInvalidMeasureValue := &timestreamquery.QueryOutput{
 		ColumnInfo: createColumnInfo(),
-		Rows: []*timestreamquery.Row{
+		Rows: []qtypes.Row{
 			{
 				Data: createDatumWithInstance(
 					true,
@@ -201,7 +225,7 @@ func TestQueryClientRead(t *testing.T) {
 
 	queryOutputWithInvalidTime := &timestreamquery.QueryOutput{
 		ColumnInfo: createColumnInfo(),
-		Rows: []*timestreamquery.Row{
+		Rows: []qtypes.Row{
 			{
 				Data: createDatumWithInstance(
 					true,
@@ -270,18 +294,31 @@ func TestQueryClientRead(t *testing.T) {
 	}
 
 	queryInputWithInvalidRegex := &timestreamquery.QueryInput{
-		QueryString: aws.String(fmt.Sprintf("SELECT * FROM %s.%s WHERE %s = '%s' AND REGEXP_LIKE(job, '%s') AND %s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)",
-			mockDatabaseName, mockTableName, measureNameColumnName, metricName, invalidRegex, timeColumnName, startUnixInSeconds, endUnixInSeconds)),
+		QueryString: aws.String(fmt.Sprintf(
+			"SELECT * FROM %s.%s WHERE %s = '%s' AND REGEXP_LIKE(job, '%s') AND %s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)",
+			mockDatabaseName,
+			mockTableName,
+			measureNameColumnName,
+			metricName,
+			invalidRegex,
+			timeColumnName,
+			startUnixInSeconds,
+			endUnixInSeconds,
+		)),
 	}
 
 	t.Run("success", func(t *testing.T) {
 		mockTimestreamQueryClient := new(mockTimestreamQueryClient)
-		mockTimestreamQueryClient.On("QueryPages", queryInput,
-			mock.AnythingOfType(functionType)).Return(nil)
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
-			return mockTimestreamQueryClient, nil
+		initQueryClient = func(config aws.Config) (*timestreamquery.Client, error) {
+			return mockTimestreamQueryClient.Client, nil
 		}
 
+		mockPaginator := newMockPaginator(mockTimestreamQueryClient.Client, queryInput)
+		mockPaginator.On("HasMorePages").Return(false, nil)
+		mockPaginator.On("NextPage", mock.Anything).Return(nil, nil)
+		initPaginatorFactory = func(timestreamQuery *timestreamquery.Client, queryInput *timestreamquery.QueryInput) Paginator {
+			return mockPaginator
+		}
 		c := &Client{
 			writeClient:     nil,
 			defaultDataBase: mockDatabaseName,
@@ -289,7 +326,7 @@ func TestQueryClientRead(t *testing.T) {
 		}
 		c.queryClient = createNewQueryClientTemplate(c)
 
-		readResponse, err := c.queryClient.Read(request, mockCredentials)
+		readResponse, err := c.queryClient.Read(context.Background(), request, mockCredentials)
 		assert.Nil(t, err)
 		assert.Equal(t, response, readResponse)
 
@@ -298,10 +335,14 @@ func TestQueryClientRead(t *testing.T) {
 
 	t.Run("success without mapping", func(t *testing.T) {
 		mockTimestreamQueryClient := new(mockTimestreamQueryClient)
-		mockTimestreamQueryClient.On("QueryPages", queryInput,
-			mock.AnythingOfType(functionType)).Return(nil)
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
-			return mockTimestreamQueryClient, nil
+		initQueryClient = func(config aws.Config) (*timestreamquery.Client, error) {
+			return mockTimestreamQueryClient.Client, nil
+		}
+		mockPaginator := newMockPaginator(mockTimestreamQueryClient.Client, queryInput)
+		mockPaginator.On("HasMorePages").Return(false, nil)
+		mockPaginator.On("NextPage", mock.Anything).Return(nil, nil)
+		initPaginatorFactory = func(timestreamQuery *timestreamquery.Client, queryInput *timestreamquery.QueryInput) Paginator {
+			return mockPaginator
 		}
 
 		c := &Client{
@@ -311,7 +352,7 @@ func TestQueryClientRead(t *testing.T) {
 		}
 		c.queryClient = createNewQueryClientTemplate(c)
 
-		readResponse, err := c.queryClient.Read(request, mockCredentials)
+		readResponse, err := c.queryClient.Read(context.Background(), request, mockCredentials)
 		assert.Nil(t, err)
 		assert.Equal(t, response, readResponse)
 
@@ -319,42 +360,38 @@ func TestQueryClientRead(t *testing.T) {
 	})
 
 	t.Run("error from buildCommands with missing database name in request", func(t *testing.T) {
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
-			return new(mockTimestreamQueryClient), nil
+		mockTimestreamQueryClient := new(mockTimestreamQueryClient)
+		initQueryClient = func(config aws.Config) (*timestreamquery.Client, error) {
+			return mockTimestreamQueryClient.Client, nil
+		}
+
+		mockPaginator := newMockPaginator(mockTimestreamQueryClient.Client, queryInput)
+		mockPaginator.On("HasMorePages").Return(false, nil)
+		mockPaginator.On("NextPage", mock.Anything).Return(nil, nil)
+		initPaginatorFactory = func(timestreamQuery *timestreamquery.Client, queryInput *timestreamquery.QueryInput) Paginator {
+			return mockPaginator
 		}
 
 		c := &Client{
-			writeClient:   nil,
+			writeClient: nil,
 		}
 		c.queryClient = createNewQueryClientTemplate(c)
 
-		_, err := c.queryClient.Read(request, mockCredentials)
+		_, err := c.queryClient.Read(context.Background(), request, mockCredentials)
 		assert.IsType(t, &errors.MissingDatabaseError{}, err)
 	})
 
-	t.Run("error from buildCommands with missing table name in request", func(t *testing.T) {
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
-			return new(mockTimestreamQueryClient), nil
-		}
-
-		c := &Client{
-			writeClient:   nil,
-			defaultDataBase: mockDatabaseName,
-		}
-		c.queryClient = createNewQueryClientTemplate(c)
-
-		_, err := c.queryClient.Read(request, mockCredentials)
-		assert.IsType(t, &errors.MissingTableError{}, err)
-	})
-
-	t.Run("error from QueryPages()", func(t *testing.T) {
+	t.Run("success from NextPage() using data helpers", func(t *testing.T) {
 		mockTimestreamQueryClient := new(mockTimestreamQueryClient)
-		serverError := &timestreamquery.InternalServerException{}
-		mockTimestreamQueryClient.On("QueryPages", queryInput,
-			mock.AnythingOfType(functionType)).Return(serverError)
+		initQueryClient = func(config aws.Config) (*timestreamquery.Client, error) {
+			return mockTimestreamQueryClient.Client, nil
+		}
 
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
-			return mockTimestreamQueryClient, nil
+		mockPaginator := newMockPaginator(mockTimestreamQueryClient.Client, queryInput)
+		mockPaginator.On("HasMorePages").Return(false, nil)
+		mockPaginator.On("NextPage", mock.Anything).Return(nil, nil)
+		initPaginatorFactory = func(timestreamQuery *timestreamquery.Client, queryInput *timestreamquery.QueryInput) Paginator {
+			return mockPaginator
 		}
 
 		c := &Client{
@@ -364,8 +401,60 @@ func TestQueryClientRead(t *testing.T) {
 		}
 		c.queryClient = createNewQueryClientTemplate(c)
 
-		_, err := c.queryClient.Read(request, mockCredentials)
+		readResponse, err := c.queryClient.Read(context.Background(), request, mockCredentials)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, readResponse)
+		mockTimestreamQueryClient.AssertExpectations(t)
+	})
+
+	t.Run("error from NextPage()", func(t *testing.T) {
+		serverError := &qtypes.InternalServerException{Message: aws.String("Server error")}
+
+		mockPaginator := new(mockPaginator)
+		mockPaginator.On("HasMorePages").Return(true, nil)
+		mockPaginator.On("NextPage", mock.Anything).Return(nil, serverError)
+		initPaginatorFactory = func(timestreamQuery *timestreamquery.Client, queryInput *timestreamquery.QueryInput) Paginator {
+			return mockPaginator
+		}
+
+		c := &Client{
+			writeClient:     nil,
+			defaultDataBase: mockDatabaseName,
+			defaultTable:    mockTableName,
+		}
+		c.queryClient = createNewQueryClientTemplate(c)
+
+		_, err := c.queryClient.Read(context.Background(), request, mockCredentials)
 		assert.Equal(t, serverError, err)
+
+		mockPaginator.AssertExpectations(t)
+	})
+
+	t.Run("error from NextPage() with invalid regex", func(t *testing.T) {
+		validationError := &wtypes.ValidationException{Message: aws.String("Validation error occurred")}
+		mockTimestreamQueryClient := new(mockTimestreamQueryClient)
+
+		mockPaginator := newMockPaginator(mockTimestreamQueryClient.Client, queryInputWithInvalidRegex)
+		mockPaginator.On("HasMorePages").Return(true, nil)
+		mockPaginator.On("NextPage", mock.Anything).Return(nil, validationError)
+		initPaginatorFactory = func(timestreamQuery *timestreamquery.Client, queryInput *timestreamquery.QueryInput) Paginator {
+			return mockPaginator
+		}
+
+		initQueryClient = func(config aws.Config) (*timestreamquery.Client, error) {
+			return mockTimestreamQueryClient.Client, nil
+		}
+
+		c := &Client{
+			writeClient:     nil,
+			defaultDataBase: mockDatabaseName,
+			defaultTable:    mockTableName,
+		}
+		c.queryClient = createNewQueryClientTemplate(c)
+
+		_, err := c.queryClient.Read(context.Background(), requestWithInvalidRegex, mockCredentials)
+		assert.Equal(t, validationError, err)
 
 		mockTimestreamQueryClient.AssertExpectations(t)
 	})
@@ -439,6 +528,13 @@ func TestQueryClientRead(t *testing.T) {
 	})
 
 	t.Run("error from buildCommand with unknown matcher type", func(t *testing.T) {
+		mockPaginator := new(mockPaginator)
+		mockPaginator.On("HasMorePages").Return(false, nil)
+		mockPaginator.On("NextPage", mock.Anything).Return(nil, nil)
+		initPaginatorFactory = func(timestreamQuery *timestreamquery.Client, queryInput *timestreamquery.QueryInput) Paginator {
+			return mockPaginator
+		}
+
 		c := &Client{
 			writeClient:     nil,
 			defaultDataBase: mockDatabaseName,
@@ -446,51 +542,53 @@ func TestQueryClientRead(t *testing.T) {
 		}
 		c.queryClient = createNewQueryClientTemplate(c)
 
-		_, err := c.queryClient.Read(requestWithInvalidMatcher, mockCredentials)
+		_, err := c.queryClient.Read(context.Background(), requestWithInvalidMatcher, mockCredentials)
 		assert.IsType(t, &errors.UnknownMatcherError{}, err)
 	})
 
-	t.Run("error from queryPages with invalid regex", func(t *testing.T) {
-		validationError := &timestreamquery.ValidationException{
-			RespMetadata: protocol.ResponseMetadata{StatusCode: 400},
-		}
+	t.Run("error from buildCommands with missing table name in request", func(t *testing.T) {
 		mockTimestreamQueryClient := new(mockTimestreamQueryClient)
-		mockTimestreamQueryClient.On("QueryPages", queryInputWithInvalidRegex,
-			mock.AnythingOfType(functionType)).Return(validationError)
+		initQueryClient = func(config aws.Config) (*timestreamquery.Client, error) {
+			return mockTimestreamQueryClient.Client, nil
+		}
 
-		initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
-			return mockTimestreamQueryClient, nil
+		mockPaginator := newMockPaginator(mockTimestreamQueryClient.Client, queryInput)
+		mockPaginator.On("HasMorePages").Return(false, nil)
+		mockPaginator.On("NextPage", mock.Anything).Return(nil, nil)
+		initPaginatorFactory = func(timestreamQuery *timestreamquery.Client, queryInput *timestreamquery.QueryInput) Paginator {
+			return mockPaginator
 		}
 
 		c := &Client{
 			writeClient:     nil,
 			defaultDataBase: mockDatabaseName,
-			defaultTable:    mockTableName,
 		}
 		c.queryClient = createNewQueryClientTemplate(c)
 
-		_, err := c.queryClient.Read(requestWithInvalidRegex, mockCredentials)
-		assert.Equal(t, validationError, err)
-
-		mockTimestreamQueryClient.AssertExpectations(t)
+		_, err := c.queryClient.Read(context.Background(), request, mockCredentials)
+		assert.IsType(t, &errors.MissingTableError{}, err)
 	})
 }
 
 func TestWriteClientWrite(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
+
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 		expectedInput := createNewWriteRecordsInputTemplate()
+
 		mockTimestreamWriteClient.On(
 			"WriteRecords",
+			mock.Anything,
 			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
 				// Sort the records in the WriteRecordsInput by their time, and sort the Dimension by dimension names.
 				sortRecords(writeInput)
 				sortRecords(expectedInput)
-
 				return reflect.DeepEqual(writeInput, expectedInput)
-			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
+			}),
+			mock.Anything,
+		).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -501,9 +599,10 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
 
-		err := c.writeClient.Write(createNewRequestTemplate(), mockCredentials)
+		err := c.writeClient.Write(context.Background(), createNewRequestTemplate(), mockCredentials)
 		assert.Nil(t, err)
 
+		mockTimestreamWriteClient.AssertCalled(t, "WriteRecords", mock.Anything, expectedInput, mock.Anything)
 		mockTimestreamWriteClient.AssertExpectations(t)
 	})
 
@@ -515,15 +614,16 @@ func TestWriteClientWrite(t *testing.T) {
 
 		mockTimestreamWriteClient.On(
 			"WriteRecords",
+			mock.Anything,
 			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
-				// Sort the records in the WriteRecordsInput by their time, and sort the Dimension by dimension names.
 				sortRecords(writeInput)
 				sortRecords(expectedInput)
-
 				return reflect.DeepEqual(writeInput, expectedInput)
-			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
+			}),
+			mock.Anything,
+		).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -540,7 +640,7 @@ func TestWriteClientWrite(t *testing.T) {
 			Value:     measureValue,
 		})
 
-		err := c.writeClient.Write(req, mockCredentials)
+		err := c.writeClient.Write(context.Background(), req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
@@ -555,18 +655,18 @@ func TestWriteClientWrite(t *testing.T) {
 
 		mockTimestreamWriteClient.On(
 			"WriteRecords",
+			mock.Anything,
 			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
-				// Sort the records in the WriteRecordsInput by their time, and sort the Dimension by dimension names.
 				sortRecords(writeInput)
 				sortRecords(expectedInput)
-
 				return reflect.DeepEqual(writeInput, expectedInput)
-			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
+			}),
+			mock.Anything,
+		).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
-
 		c := &Client{
 			queryClient:     nil,
 			defaultDataBase: mockDatabaseName,
@@ -580,7 +680,7 @@ func TestWriteClientWrite(t *testing.T) {
 			Value:     measureValue,
 		})
 
-		errWm := c.writeClient.Write(reqWithoutMapping, mockCredentials)
+		errWm := c.writeClient.Write(context.Background(), reqWithoutMapping, mockCredentials)
 		assert.Nil(t, errWm)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
@@ -595,13 +695,17 @@ func TestWriteClientWrite(t *testing.T) {
 
 		mockTimestreamWriteClient.On(
 			"WriteRecords",
+			mock.Anything,
 			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
 				sortRecords(writeInput)
 				sortRecords(expectedInput)
-				return reflect.DeepEqual(writeInput, expectedInput)
-			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+				return reflect.DeepEqual(writeInput, expectedInput)
+			}),
+			mock.Anything,
+		).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
+
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -614,7 +718,7 @@ func TestWriteClientWrite(t *testing.T) {
 		req := createNewRequestTemplate()
 		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplate())
 
-		err := c.writeClient.Write(req, mockCredentials)
+		err := c.writeClient.Write(context.Background(), req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
@@ -629,24 +733,28 @@ func TestWriteClientWrite(t *testing.T) {
 
 		mockTimestreamWriteClient.On(
 			"WriteRecords",
+			mock.Anything,
 			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
 				sortRecords(writeInput)
 				sortRecords(expectedInput)
-				return reflect.DeepEqual(writeInput, expectedInput)
-			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+				return reflect.DeepEqual(writeInput, expectedInput)
+			}),
+			mock.Anything,
+		).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
+
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
 		c := &Client{
-			queryClient:   nil,
+			queryClient: nil,
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
 		req := createNewRequestTemplate()
 		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplate())
 
-		err := c.writeClient.Write(req, mockCredentials)
+		err := c.writeClient.Write(context.Background(), req, mockCredentials)
 		expectedErr := errors.NewMissingDatabaseWithWriteError("", createTimeSeriesTemplate())
 		assert.Equal(t, err, expectedErr)
 	})
@@ -659,25 +767,29 @@ func TestWriteClientWrite(t *testing.T) {
 
 		mockTimestreamWriteClient.On(
 			"WriteRecords",
+			mock.Anything,
 			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
 				sortRecords(writeInput)
 				sortRecords(expectedInput)
-				return reflect.DeepEqual(writeInput, expectedInput)
-			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+				return reflect.DeepEqual(writeInput, expectedInput)
+			}),
+			mock.Anything,
+		).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
+
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
 		c := &Client{
-			queryClient:   nil,
+			queryClient:     nil,
 			defaultDataBase: mockDatabaseName,
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
 		req := createNewRequestTemplate()
 		req.Timeseries = append(req.Timeseries, createTimeSeriesTemplate())
 
-		err := c.writeClient.Write(req, mockCredentials)
+		err := c.writeClient.Write(context.Background(), req, mockCredentials)
 		expectedErr := errors.NewMissingTableWithWriteError("", createTimeSeriesTemplate())
 		assert.Equal(t, err, expectedErr)
 	})
@@ -685,12 +797,12 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("error from convertToRecords due to missing ingestion database destination", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
 		c := &Client{
-			queryClient:   nil,
+			queryClient: nil,
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
 
@@ -706,7 +818,7 @@ func TestWriteClientWrite(t *testing.T) {
 			},
 		}
 
-		err := c.WriteClient().Write(input, mockCredentials)
+		err := c.WriteClient().Write(context.Background(), input, mockCredentials)
 		assert.IsType(t, &errors.MissingDatabaseWithWriteError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -715,12 +827,12 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("error from convertToRecords due to missing ingestion table destination", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
 		c := &Client{
-			queryClient:   nil,
+			queryClient:     nil,
 			defaultDataBase: mockDatabaseName,
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
@@ -737,7 +849,7 @@ func TestWriteClientWrite(t *testing.T) {
 			},
 		}
 
-		err := c.WriteClient().Write(input, mockCredentials)
+		err := c.WriteClient().Write(context.Background(), input, mockCredentials)
 		assert.IsType(t, &errors.MissingTableWithWriteError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -746,19 +858,22 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("error from WriteRecords()", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 		expectedInput := createNewWriteRecordsInputTemplate()
-		requestError := &timestreamwrite.ValidationException{
-			RespMetadata: protocol.ResponseMetadata{StatusCode: 404},
+		requestError := &wtypes.ValidationException{
+			Message: aws.String("Validation error occurred"),
 		}
 
 		mockTimestreamWriteClient.On(
 			"WriteRecords",
+			mock.Anything,
 			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
 				sortRecords(writeInput)
 				sortRecords(expectedInput)
 				return reflect.DeepEqual(writeInput, expectedInput)
-			})).Return(&timestreamwrite.WriteRecordsOutput{}, requestError)
+			}),
+			mock.Anything,
+		).Return(&timestreamwrite.WriteRecordsOutput{}, requestError)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -769,7 +884,7 @@ func TestWriteClientWrite(t *testing.T) {
 		}
 		c.writeClient = createNewWriteClientTemplate(c)
 
-		err := c.WriteClient().Write(createNewRequestTemplate(), mockCredentials)
+		err := c.WriteClient().Write(context.Background(), createNewRequestTemplate(), mockCredentials)
 		assert.Equal(t, requestError, err)
 
 		mockTimestreamWriteClient.AssertExpectations(t)
@@ -780,13 +895,16 @@ func TestWriteClientWrite(t *testing.T) {
 		expectedInput := createNewWriteRecordsInputTemplate()
 		mockTimestreamWriteClient.On(
 			"WriteRecords",
+			mock.Anything,
 			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
 				sortRecords(writeInput)
 				sortRecords(expectedInput)
 				return reflect.DeepEqual(writeInput, expectedInput)
-			})).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
+			}),
+			mock.Anything,
+		).Return(&timestreamwrite.WriteRecordsOutput{}, nil)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -799,7 +917,7 @@ func TestWriteClientWrite(t *testing.T) {
 		c.writeClient.failOnInvalidSample = true
 
 		req := createNewRequestTemplate()
-		err := c.WriteClient().Write(req, mockCredentials)
+		err := c.WriteClient().Write(context.Background(), req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
@@ -808,7 +926,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("NaN timeSeries with fail-fast enabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -822,7 +940,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Samples[0].Value = math.NaN()
-		err := c.WriteClient().Write(req, mockCredentials)
+		err := c.WriteClient().Write(context.Background(), req, mockCredentials)
 		assert.IsType(t, &errors.InvalidSampleValueError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -831,7 +949,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("NaN timeSeries with fail-fast disabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -845,7 +963,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Samples[0].Value = math.NaN()
-		err := c.WriteClient().Write(req, mockCredentials)
+		err := c.WriteClient().Write(context.Background(), req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -854,9 +972,10 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("Inf timeSeries with fail-fast enabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
+		ctx := context.Background()
 
 		c := &Client{
 			queryClient:     nil,
@@ -868,11 +987,11 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Samples[0].Value = math.Inf(1)
-		err := c.WriteClient().Write(req, mockCredentials)
+		err := c.WriteClient().Write(ctx, req, mockCredentials)
 		assert.NotNil(t, err)
 
 		req.Timeseries[0].Samples[0].Value = math.Inf(-1)
-		err = c.WriteClient().Write(req, mockCredentials)
+		err = c.WriteClient().Write(ctx, req, mockCredentials)
 		assert.IsType(t, &errors.InvalidSampleValueError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -881,9 +1000,10 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("Inf timeSeries with fail-fast disabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
+		ctx := context.Background()
 
 		c := &Client{
 			queryClient:     nil,
@@ -895,11 +1015,11 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Samples[0].Value = math.Inf(1)
-		err := c.WriteClient().Write(req, mockCredentials)
+		err := c.WriteClient().Write(ctx, req, mockCredentials)
 		assert.Nil(t, err)
 
 		req.Timeseries[0].Samples[0].Value = math.Inf(-1)
-		err = c.WriteClient().Write(req, mockCredentials)
+		err = c.WriteClient().Write(ctx, req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -908,7 +1028,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("long metric name with fail-fast enabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -922,7 +1042,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Labels[0].Value = mockLongMetric
-		err := c.WriteClient().Write(req, mockCredentials)
+		err := c.WriteClient().Write(context.Background(), req, mockCredentials)
 		assert.IsType(t, &errors.LongLabelNameError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -931,7 +1051,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("long metric name with fail-fast disabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -945,7 +1065,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Labels[0].Value = mockLongMetric
-		err := c.WriteClient().Write(req, mockCredentials)
+		err := c.WriteClient().Write(context.Background(), req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -954,7 +1074,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("long dimension name with fail-fast enabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -968,7 +1088,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Labels[1].Name = mockLongMetric
-		err := c.WriteClient().Write(req, mockCredentials)
+		err := c.WriteClient().Write(context.Background(), req, mockCredentials)
 		assert.IsType(t, &errors.LongLabelNameError{}, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -977,7 +1097,7 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("long dimension name with fail-fast disabled", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -991,7 +1111,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		req := createNewRequestTemplate()
 		req.Timeseries[0].Labels[1].Name = mockLongMetric
-		err := c.WriteClient().Write(req, mockCredentials)
+		err := c.WriteClient().Write(context.Background(), req, mockCredentials)
 		assert.Nil(t, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
@@ -1000,9 +1120,15 @@ func TestWriteClientWrite(t *testing.T) {
 	t.Run("unknown SDK error", func(t *testing.T) {
 		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
 		unknownSDKErr := errors.NewSDKNonRequestError(goErrors.New(""))
-		mockTimestreamWriteClient.On("WriteRecords", createNewWriteRecordsInputTemplate()).Return(&timestreamwrite.WriteRecordsOutput{}, unknownSDKErr)
+		mockTimestreamWriteClient.On(
+			"WriteRecords",
+			mock.Anything,
+			createNewWriteRecordsInputTemplate(),
+			mock.Anything,
+		).Return(&timestreamwrite.WriteRecordsOutput{},
+			unknownSDKErr)
 
-		initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
 			return mockTimestreamWriteClient, nil
 		}
 
@@ -1014,7 +1140,7 @@ func TestWriteClientWrite(t *testing.T) {
 		c.writeClient = createNewWriteClientTemplate(c)
 
 		req := createNewRequestTemplate()
-		err := c.WriteClient().Write(req, mockCredentials)
+		err := c.WriteClient().Write(context.Background(), req, mockCredentials)
 		assert.Equal(t, unknownSDKErr, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
@@ -1071,18 +1197,18 @@ func createNewRequestTemplateWithoutMapping() *prompb.WriteRequest {
 }
 
 // createNewRecordTemplate creates a template of timestreamwrite.Record pointer for unit tests.
-func createNewRecordTemplate() *timestreamwrite.Record {
-	return &timestreamwrite.Record{
-		Dimensions: []*timestreamwrite.Dimension{
-			&(timestreamwrite.Dimension{
+func createNewRecordTemplate() wtypes.Record {
+	return wtypes.Record{
+		Dimensions: []wtypes.Dimension{
+			(wtypes.Dimension{
 				Name:  aws.String("label_1"),
 				Value: aws.String("value_1")}),
 		},
 		MeasureName:      aws.String(metricName),
 		MeasureValue:     aws.String(measureValueStr),
-		MeasureValueType: aws.String(timestreamquery.ScalarTypeDouble),
+		MeasureValueType: wtypes.MeasureValueTypeDouble,
 		Time:             aws.String(strconv.FormatInt(mockUnixTime, 10)),
-		TimeUnit:         aws.String(timestreamwrite.TimeUnitMilliseconds),
+		TimeUnit:         wtypes.TimeUnitMilliseconds,
 	}
 }
 
@@ -1091,7 +1217,7 @@ func createNewWriteRecordsInputTemplate() *timestreamwrite.WriteRecordsInput {
 	input := &timestreamwrite.WriteRecordsInput{
 		DatabaseName: aws.String(mockDatabaseName),
 		TableName:    aws.String(mockTableName),
-		Records:      []*timestreamwrite.Record{createNewRecordTemplate()},
+		Records:      []wtypes.Record{createNewRecordTemplate()},
 	}
 	return input
 }
@@ -1121,44 +1247,44 @@ func createNewQueryClientTemplate(c *Client) *QueryClient {
 }
 
 // createColumnInfo creates a Timestream ColumnInfo for constructing QueryOutput.
-func createColumnInfo() []*timestreamquery.ColumnInfo {
-	return []*timestreamquery.ColumnInfo{
+func createColumnInfo() []qtypes.ColumnInfo {
+	return []qtypes.ColumnInfo{
 		{
 			Name: aws.String(model.InstanceLabel),
-			Type: &timestreamquery.Type{
-				ScalarType: aws.String(timestreamquery.ScalarTypeVarchar),
+			Type: &qtypes.Type{
+				ScalarType: qtypes.ScalarTypeVarchar,
 			},
 		},
 		{
 			Name: aws.String(model.JobLabel),
-			Type: &timestreamquery.Type{
-				ScalarType: aws.String(timestreamquery.ScalarTypeVarchar),
+			Type: &qtypes.Type{
+				ScalarType: qtypes.ScalarTypeVarchar,
 			},
 		},
 		{
 			Name: aws.String(measureValueColumnName),
-			Type: &timestreamquery.Type{
-				ScalarType: aws.String(timestreamquery.ScalarTypeDouble),
+			Type: &qtypes.Type{
+				ScalarType: qtypes.ScalarTypeDouble,
 			},
 		},
 		{
 			Name: aws.String(measureNameColumnName),
-			Type: &timestreamquery.Type{
-				ScalarType: aws.String(timestreamquery.ScalarTypeVarchar),
+			Type: &qtypes.Type{
+				ScalarType: qtypes.ScalarTypeVarchar,
 			},
 		},
 		{
 			Name: aws.String(timeColumnName),
-			Type: &timestreamquery.Type{
-				ScalarType: aws.String(timestreamquery.ScalarTypeTimestamp),
+			Type: &qtypes.Type{
+				ScalarType: qtypes.ScalarTypeTimestamp,
 			},
 		},
 	}
 }
 
 // createDatumWithInstance creates a Timestream Datum object with instance.
-func createDatumWithInstance(isNullValue bool, instance string, measureValue string, measureName string, time string) []*timestreamquery.Datum {
-	return []*timestreamquery.Datum{
+func createDatumWithInstance(isNullValue bool, instance string, measureValue string, measureName string, time string) []qtypes.Datum {
+	return []qtypes.Datum{
 		{ScalarValue: aws.String(instance)},
 		{NullValue: aws.Bool(isNullValue)},
 		{ScalarValue: aws.String(measureValue)},
@@ -1168,8 +1294,8 @@ func createDatumWithInstance(isNullValue bool, instance string, measureValue str
 }
 
 // createDatumWithJob creates a Timestream Datum object with job.
-func createDatumWithJob(isNullValue bool, job string, measureValue string, measureName string, time string) []*timestreamquery.Datum {
-	return []*timestreamquery.Datum{
+func createDatumWithJob(isNullValue bool, job string, measureValue string, measureName string, time string) []qtypes.Datum {
+	return []qtypes.Datum{
 		{NullValue: aws.Bool(isNullValue)},
 		{ScalarValue: aws.String(job)},
 		{ScalarValue: aws.String(measureValue)},

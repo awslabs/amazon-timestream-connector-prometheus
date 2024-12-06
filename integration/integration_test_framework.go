@@ -24,8 +24,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/timestreamwrite"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/timestreamwrite"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -129,28 +129,28 @@ func StopContainer(t *testing.T, cli *client.Client, ctx context.Context, contai
 }
 
 // Setup creates new databases and tables for integration tests.
-func Setup(writeClient *timestreamwrite.TimestreamWrite, destinations map[string][]string) error {
+func Setup(ctx context.Context, writeClient *timestreamwrite.Client, destinations map[string][]string) error {
 	for database, tables := range destinations {
 		databaseName := aws.String(database)
 		for _, table := range tables {
 			tableName := aws.String(table)
-			if _, err := writeClient.DescribeTable(&timestreamwrite.DescribeTableInput{DatabaseName: databaseName, TableName: tableName}); err == nil {
-				if _, err = writeClient.DeleteTable(&timestreamwrite.DeleteTableInput{DatabaseName: databaseName, TableName: tableName}); err != nil {
+			if _, err := writeClient.DescribeTable(ctx, &timestreamwrite.DescribeTableInput{DatabaseName: databaseName, TableName: tableName}); err == nil {
+				if _, err = writeClient.DeleteTable(ctx, &timestreamwrite.DeleteTableInput{DatabaseName: databaseName, TableName: tableName}); err != nil {
 					return err
 				}
 			}
 		}
-		if _, err := writeClient.DescribeDatabase(&timestreamwrite.DescribeDatabaseInput{DatabaseName: databaseName}); err == nil {
-			if _, err = writeClient.DeleteDatabase(&timestreamwrite.DeleteDatabaseInput{DatabaseName: databaseName}); err != nil {
+		if _, err := writeClient.DescribeDatabase(ctx, &timestreamwrite.DescribeDatabaseInput{DatabaseName: databaseName}); err == nil {
+			if _, err = writeClient.DeleteDatabase(ctx, &timestreamwrite.DeleteDatabaseInput{DatabaseName: databaseName}); err != nil {
 				return err
 			}
 		}
 
-		if _, err := writeClient.CreateDatabase(&timestreamwrite.CreateDatabaseInput{DatabaseName: databaseName}); err != nil {
+		if _, err := writeClient.CreateDatabase(ctx, &timestreamwrite.CreateDatabaseInput{DatabaseName: databaseName}); err != nil {
 			return err
 		}
 		for _, table := range tables {
-			if _, err := writeClient.CreateTable(&timestreamwrite.CreateTableInput{DatabaseName: databaseName, TableName: aws.String(table)}); err != nil {
+			if _, err := writeClient.CreateTable(ctx, &timestreamwrite.CreateTableInput{DatabaseName: databaseName, TableName: aws.String(table)}); err != nil {
 				return err
 			}
 		}
@@ -159,15 +159,15 @@ func Setup(writeClient *timestreamwrite.TimestreamWrite, destinations map[string
 }
 
 // Shutdown removes the databases and tables created for integration tests.
-func Shutdown(writeClient *timestreamwrite.TimestreamWrite, destinations map[string][]string) error {
+func Shutdown(ctx context.Context, writeClient *timestreamwrite.Client, destinations map[string][]string) error {
 	for database, tables := range destinations {
 		databaseName := aws.String(database)
 		for _, table := range tables {
-			if _, err := writeClient.DeleteTable(&timestreamwrite.DeleteTableInput{DatabaseName: databaseName, TableName: aws.String(table)}); err != nil {
+			if _, err := writeClient.DeleteTable(ctx, &timestreamwrite.DeleteTableInput{DatabaseName: databaseName, TableName: aws.String(table)}); err != nil {
 				return err
 			}
 		}
-		if _, err := writeClient.DeleteDatabase(&timestreamwrite.DeleteDatabaseInput{DatabaseName: databaseName}); err != nil {
+		if _, err := writeClient.DeleteDatabase(ctx, &timestreamwrite.DeleteDatabaseInput{DatabaseName: databaseName}); err != nil {
 			return err
 		}
 	}

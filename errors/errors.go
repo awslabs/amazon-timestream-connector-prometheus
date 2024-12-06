@@ -16,8 +16,9 @@ package errors
 
 import (
 	"fmt"
-	"github.com/prometheus/prometheus/prompb"
 	"net/http"
+
+	"github.com/prometheus/prometheus/prompb"
 )
 
 type baseConnectorError struct {

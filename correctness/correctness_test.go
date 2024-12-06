@@ -23,8 +23,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/csv"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"io"
 	"os"
 	"path/filepath"
@@ -32,6 +30,9 @@ import (
 	"time"
 	"timestream-prometheus-connector/integration"
 	"timestream-prometheus-connector/timestream"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/docker/docker/client"
 )

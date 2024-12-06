@@ -17,23 +17,20 @@ and limitations under the License.
 package main
 
 import (
+	"context"
 	"encoding/base64"
+	goErrors "errors"
 	"fmt"
+
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/go-kit/log"
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/promlog"
-	"github.com/prometheus/common/promlog/flag"
-	"github.com/prometheus/prometheus/prompb"
-	"github.com/alecthomas/kingpin/v2"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	wtypes "github.com/aws/aws-sdk-go-v2/service/timestreamwrite/types"
+	"github.com/aws/smithy-go"
+
 	"io"
 	"net/http"
 	"os"
@@ -42,6 +39,16 @@ import (
 	"strings"
 	"timestream-prometheus-connector/errors"
 	"timestream-prometheus-connector/timestream"
+
+	"github.com/alecthomas/kingpin/v2"
+	"github.com/go-kit/log"
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/promlog"
+	"github.com/prometheus/common/promlog/flag"
+	"github.com/prometheus/prometheus/prompb"
 )
 
 const (
@@ -53,25 +60,29 @@ const (
 
 var (
 	// Store the initialization function calls and client retrieval calls to allow unit tests to mock the creation of real clients.
-	createWriteClient = func(timestreamClient *timestream.Client, logger log.Logger, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) {
-		timestreamClient.NewWriteClient(logger, configs, failOnLongMetricLabelName, failOnInvalidSample)
+	createWriteClient = func(timestreamClient *timestream.Client, logger log.Logger, cfg aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) {
+		timestreamClient.NewWriteClient(logger, cfg, failOnLongMetricLabelName, failOnInvalidSample)
 	}
-	createQueryClient = func(timestreamClient *timestream.Client, logger log.Logger, configs *aws.Config, maxRetries int) {
-		configs.MaxRetries = aws.Int(maxRetries)
-		timestreamClient.NewQueryClient(logger, configs)
+	createQueryClient = func(timestreamClient *timestream.Client, logger log.Logger, cfg aws.Config) {
+		timestreamClient.NewQueryClient(logger, cfg)
 	}
-	getWriteClient = func(timestreamClient *timestream.Client) writer { return timestreamClient.WriteClient() }
-	getQueryClient = func(timestreamClient *timestream.Client) reader { return timestreamClient.QueryClient() }
-	halt           = os.Exit
+
+	getWriteClient = func(timestreamClient *timestream.Client) writer {
+		return timestreamClient.WriteClient()
+	}
+	getQueryClient = func(timestreamClient *timestream.Client) reader {
+		return timestreamClient.QueryClient()
+	}
+	halt = os.Exit
 )
 
 type writer interface {
-	Write(req *prompb.WriteRequest, credentials *credentials.Credentials) error
+	Write(ctx context.Context, req *prompb.WriteRequest, credentialsProvider aws.CredentialsProvider) error
 	Name() string
 }
 
 type reader interface {
-	Read(req *prompb.ReadRequest, credentials *credentials.Credentials) (*prompb.ReadResponse, error)
+	Read(ctx context.Context, req *prompb.ReadRequest, credentialsProvider aws.CredentialsProvider) (*prompb.ReadResponse, error)
 	Name() string
 }
 
@@ -108,15 +119,22 @@ func main() {
 		http.Handle(cfg.telemetryPath, promhttp.Handler())
 
 		logger := cfg.createLogger()
-		awsQueryConfigs := cfg.buildAWSConfig()
-		awsWriteConfigs := cfg.buildAWSConfig()
+
+		ctx := context.Background()
+		awsQueryConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxRetries)
+		if err != nil {
+			timestream.LogError(logger, "Failed to build AWS configuration for query", err)
+			os.Exit(1)
+		}
+
+		awsWriteConfigs, err := cfg.buildAWSConfig(ctx, writeClientMaxRetries)
+		if err != nil {
+			timestream.LogError(logger, "Failed to build AWS configuration for write", err)
+			os.Exit(1)
+		}
 
 		timestreamClient := timestream.NewBaseClient(cfg.defaultDatabase, cfg.defaultTable)
-
-		awsQueryConfigs.MaxRetries = aws.Int(cfg.maxRetries)
 		timestreamClient.NewQueryClient(logger, awsQueryConfigs)
-
-		awsWriteConfigs.MaxRetries = aws.Int(writeClientMaxRetries)
 		timestreamClient.NewWriteClient(logger, awsWriteConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample)
 
 		timestream.LogInfo(logger, fmt.Sprintf("Timestream connection is initialized (Database: %s, Table: %s, Region: %s)", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
@@ -136,7 +154,7 @@ func main() {
 
 // lambdaHandler receives Prometheus read or write requests sent by API Gateway.
 func lambdaHandler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	if (len(os.Getenv(defaultDatabaseConfig.envFlag)) == 0 || len(os.Getenv(defaultTableConfig.envFlag)) == 0) {
+	if len(os.Getenv(defaultDatabaseConfig.envFlag)) == 0 || len(os.Getenv(defaultTableConfig.envFlag)) == 0 {
 		return createErrorResponse(errors.NewMissingDestinationError().(*errors.MissingDestinationError).Message())
 	}
 
@@ -147,23 +165,36 @@ func lambdaHandler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyRes
 
 	logger := cfg.createLogger()
 
-	var awsCredentials *credentials.Credentials
+	ctx := context.Background()
+	var awsCredentials aws.CredentialsProvider
 	var ok bool
 
 	// If SigV4 authentication has been enabled, such as when write requests originate
 	// from the OpenTelemetry collector, credentials will be taken from the local environment.
 	// Otherwise, basic auth is used for AWS credentials
 	if cfg.enableSigV4Auth {
-		sess := session.Must(session.NewSession())
-		awsCredentials = sess.Config.Credentials
+		awsConfig, err := config.LoadDefaultConfig(ctx)
+		if err != nil {
+			return createErrorResponse("Error loading AWS config: " + err.Error())
+		}
+		awsCredentials = awsConfig.Credentials
 	} else {
 		awsCredentials, ok = parseBasicAuth(req.Headers[basicAuthHeader])
 		if !ok {
 			return createErrorResponse(errors.NewParseBasicAuthHeaderError().(*errors.ParseBasicAuthHeaderError).Message())
 		}
 	}
+	awsQueryConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxRetries)
+	if err != nil {
+		timestream.LogError(logger, "Failed to build AWS configuration for query", err)
+		os.Exit(1)
+	}
+	awsWriteConfigs, err := cfg.buildAWSConfig(ctx, writeClientMaxRetries)
+	if err != nil {
+		timestream.LogError(logger, "Failed to build AWS configuration for write", err)
+		os.Exit(1)
+	}
 
-	awsConfigs := cfg.buildAWSConfig()
 	timestreamClient := timestream.NewBaseClient(cfg.defaultDatabase, cfg.defaultTable)
 
 	requestBody, err := base64.StdEncoding.DecodeString(req.Body)
@@ -177,16 +208,16 @@ func lambdaHandler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyRes
 	}
 
 	if len(req.Headers[writeHeader]) != 0 {
-		return handleWriteRequest(reqBuf, timestreamClient, awsConfigs, cfg, logger, awsCredentials)
+		return handleWriteRequest(reqBuf, timestreamClient, awsWriteConfigs, cfg, logger, awsCredentials)
 	} else if len(req.Headers[readHeader]) != 0 {
-		return handleReadRequest(reqBuf, timestreamClient, awsConfigs, cfg, logger, awsCredentials)
+		return handleReadRequest(reqBuf, timestreamClient, awsQueryConfigs, cfg, logger, awsCredentials)
 	}
 
 	return createErrorResponse(errors.NewMissingHeaderError(readHeader, writeHeader).(*errors.MissingHeaderError).Message())
 }
 
 // handleWriteRequest handles a Prometheus write request.
-func handleWriteRequest(reqBuf []byte, timestreamClient *timestream.Client, awsConfigs *aws.Config, cfg *connectionConfig, logger log.Logger, credentials *credentials.Credentials) (events.APIGatewayProxyResponse, error) {
+func handleWriteRequest(reqBuf []byte, timestreamClient *timestream.Client, awsConfigs aws.Config, cfg *connectionConfig, logger log.Logger, credentialsProvider aws.CredentialsProvider) (events.APIGatewayProxyResponse, error) {
 	var writeRequest prompb.WriteRequest
 	if err := proto.Unmarshal(reqBuf, &writeRequest); err != nil {
 		return events.APIGatewayProxyResponse{
@@ -198,13 +229,8 @@ func handleWriteRequest(reqBuf []byte, timestreamClient *timestream.Client, awsC
 	createWriteClient(timestreamClient, logger, awsConfigs, cfg.failOnLongMetricLabelName, cfg.failOnInvalidSample)
 
 	timestream.LogInfo(logger, fmt.Sprintf("Timestream write connection is initialized (Database: %s, Table: %s, Region: %s)", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
-	if err := getWriteClient(timestreamClient).Write(&writeRequest, credentials); err != nil {
+	if err := getWriteClient(timestreamClient).Write(context.Background(), &writeRequest, credentialsProvider); err != nil {
 		errorCode := http.StatusBadRequest
-
-		if requestError, ok := err.(awserr.RequestFailure); ok {
-			errorCode = requestError.StatusCode()
-		}
-
 		return events.APIGatewayProxyResponse{
 			StatusCode: errorCode,
 			Body:       err.Error(),
@@ -217,27 +243,20 @@ func handleWriteRequest(reqBuf []byte, timestreamClient *timestream.Client, awsC
 }
 
 // handleReadRequest handles a Prometheus read request.
-func handleReadRequest(reqBuf []byte, timestreamClient *timestream.Client, awsConfigs *aws.Config, cfg *connectionConfig, logger log.Logger, credentials *credentials.Credentials) (events.APIGatewayProxyResponse, error) {
+func handleReadRequest(reqBuf []byte, timestreamClient *timestream.Client, awsConfigs aws.Config, cfg *connectionConfig, logger log.Logger, credentialsProvider aws.CredentialsProvider) (events.APIGatewayProxyResponse, error) {
 	var readRequest prompb.ReadRequest
 	if err := proto.Unmarshal(reqBuf, &readRequest); err != nil {
 		timestream.LogError(logger, "Error occurred while unmarshalling the decoded read request from Prometheus.", err)
 		return createErrorResponse(err.Error())
 	}
 
-	createQueryClient(timestreamClient, logger, awsConfigs, cfg.maxRetries)
+	createQueryClient(timestreamClient, logger, awsConfigs)
 
 	timestream.LogInfo(logger, fmt.Sprintf("Timestream query connection is initialized (Database: %s, Table: %s, Region: %s)", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
 
-	response, err := getQueryClient(timestreamClient).Read(&readRequest, credentials)
+	response, err := getQueryClient(timestreamClient).Read(context.Background(), &readRequest, credentialsProvider)
 	if err != nil {
 		timestream.LogError(logger, "Error occurred while reading the data back from Timestream.", err)
-		if requestError, ok := err.(awserr.RequestFailure); ok {
-			return events.APIGatewayProxyResponse{
-				StatusCode: requestError.StatusCode(),
-				Body:       err.Error(),
-			}, nil
-		}
-
 		return createErrorResponse(err.Error())
 	}
 
@@ -263,7 +282,7 @@ func handleReadRequest(reqBuf []byte, timestreamClient *timestream.Client, awsCo
 }
 
 // parseBasicAuth parses the encoded HTTP Basic Authentication Header.
-func parseBasicAuth(encoded string) (awsCredentials *credentials.Credentials, ok bool) {
+func parseBasicAuth(encoded string) (aws.CredentialsProvider, bool) {
 	auth := strings.SplitN(encoded, " ", 2)
 	if len(auth) != 2 || auth[0] != "Basic" {
 		return nil, false
@@ -277,7 +296,16 @@ func parseBasicAuth(encoded string) (awsCredentials *credentials.Credentials, ok
 	if len(credentialsSlice) != 2 {
 		return nil, false
 	}
-	return credentials.NewStaticCredentials(credentialsSlice[0], credentialsSlice[1], ""), true
+	staticCredentials := aws.NewCredentialsCache(
+		credentials.StaticCredentialsProvider{
+			Value: aws.Credentials{
+				AccessKeyID:     credentialsSlice[0],
+				SecretAccessKey: credentialsSlice[1],
+				Source:          "BasicAuthHeader",
+			},
+		},
+	)
+	return staticCredentials, true
 }
 
 // createLogger creates a new logger for the clients.
@@ -421,12 +449,19 @@ func parseFlags() *connectionConfig {
 }
 
 // buildAWSConfig builds a aws.Config and return the pointer of the config.
-func (cfg *connectionConfig) buildAWSConfig() *aws.Config {
-	clientConfig := cfg.clientConfig
-	awsConfig := &aws.Config{
-		Region: aws.String(clientConfig.region),
+func (cfg *connectionConfig) buildAWSConfig(ctx context.Context, maxRetries int) (aws.Config, error) {
+	awsConfig, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion(cfg.clientConfig.region),
+		config.WithRetryer(func() aws.Retryer {
+			return retry.NewStandard(func(o *retry.StandardOptions) {
+				o.MaxAttempts = maxRetries
+			})
+		}),
+	)
+	if err != nil {
+		return aws.Config{}, fmt.Errorf("failed to build AWS config: %w", err)
 	}
-	return awsConfig
+	return awsConfig, nil
 }
 
 // serve listens for requests and remote writes and reads to Timestream.
@@ -476,11 +511,17 @@ func createWriteHandler(logger log.Logger, writers []writer) func(w http.Respons
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
-		if err := writers[0].Write(&req, awsCredentials); err != nil {
+		if err := writers[0].Write(context.Background(), &req, awsCredentials); err != nil {
 			switch err := err.(type) {
-			case awserr.RequestFailure:
-				http.Error(w, err.Error(), err.StatusCode())
+			case *wtypes.RejectedRecordsException:
+				http.Error(w, err.Error(), http.StatusBadRequest)
+			case *smithy.OperationError:
+				var apiError *smithy.GenericAPIError
+				if goErrors.As(err, &apiError) {
+					http.Error(w, apiError.ErrorMessage(), getHTTPStatusFromSmithyError(apiError))
+					return
+				}
+				http.Error(w, "An unknown service error occurred", http.StatusInternalServerError)
 			case *errors.SDKNonRequestError:
 				http.Error(w, err.Error(), http.StatusBadRequest)
 			case *errors.MissingDatabaseWithWriteError:
@@ -488,10 +529,23 @@ func createWriteHandler(logger log.Logger, writers []writer) func(w http.Respons
 			case *errors.MissingTableWithWriteError:
 				http.Error(w, err.Error(), http.StatusBadRequest)
 			default:
-				// Others will halt the program.
 				halt(1)
 			}
 		}
+
+	}
+}
+
+func getHTTPStatusFromSmithyError(err *smithy.GenericAPIError) int {
+	switch err.ErrorCode() {
+	case "ThrottlingException":
+		return http.StatusTooManyRequests
+	case "ResourceNotFoundException":
+		return http.StatusNotFound
+	case "AccessDeniedException":
+		return http.StatusForbidden
+	default:
+		return http.StatusInternalServerError
 	}
 }
 
@@ -507,7 +561,6 @@ func createReadHandler(logger log.Logger, readers []reader) func(w http.Response
 		}
 
 		compressed, err := io.ReadAll(r.Body)
-
 		if err != nil {
 			timestream.LogError(logger, "Error occurred while reading the read request sent by Prometheus.", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -527,15 +580,14 @@ func createReadHandler(logger log.Logger, readers []reader) func(w http.Response
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-
-		response, err := readers[0].Read(&req, awsCredentials)
+		response, err := readers[0].Read(context.Background(), &req, awsCredentials)
 		if err != nil {
 			timestream.LogError(logger, "Error occurred while reading the data back from Timestream.", err)
-			if requestError, ok := err.(awserr.RequestFailure); ok {
-				http.Error(w, err.Error(), requestError.StatusCode())
+			var rejectedRecordsErr *wtypes.RejectedRecordsException
+			if goErrors.As(err, &rejectedRecordsErr) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
