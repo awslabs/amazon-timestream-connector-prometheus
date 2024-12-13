@@ -1176,7 +1176,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		responseError := &smithyhttp.ResponseError{
 			Response: &smithyhttp.Response{
-				&http.Response{
+				Response: &http.Response{
 					StatusCode: 400,
 					Header:     http.Header{},
 				},
@@ -1220,7 +1220,7 @@ func TestWriteClientWrite(t *testing.T) {
 
 		responseError := &smithyhttp.ResponseError{
 			Response: &smithyhttp.Response{
-				&http.Response{
+				Response: &http.Response{
 					StatusCode: 500,
 					Header:     http.Header{},
 				},
