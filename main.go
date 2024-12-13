@@ -52,10 +52,9 @@ import (
 )
 
 const (
-	readHeader            = "x-prometheus-remote-read-version"
-	writeHeader           = "x-prometheus-remote-write-version"
-	basicAuthHeader       = "authorization"
-	writeClientMaxRetries = 10
+	readHeader      = "x-prometheus-remote-read-version"
+	writeHeader     = "x-prometheus-remote-write-version"
+	basicAuthHeader = "authorization"
 )
 
 var (
@@ -101,7 +100,8 @@ type connectionConfig struct {
 	listenAddr                string
 	promlogConfig             promlog.Config
 	telemetryPath             string
-	maxRetries                int
+	maxReadRetries            int
+	maxWriteRetries           int
 	certificate               string
 	key                       string
 }
@@ -121,13 +121,13 @@ func main() {
 		logger := cfg.createLogger()
 
 		ctx := context.Background()
-		awsQueryConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxRetries)
+		awsQueryConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxReadRetries)
 		if err != nil {
 			timestream.LogError(logger, "Failed to build AWS configuration for query", err)
 			os.Exit(1)
 		}
 
-		awsWriteConfigs, err := cfg.buildAWSConfig(ctx, writeClientMaxRetries)
+		awsWriteConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxWriteRetries)
 		if err != nil {
 			timestream.LogError(logger, "Failed to build AWS configuration for write", err)
 			os.Exit(1)
@@ -184,12 +184,12 @@ func lambdaHandler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyRes
 			return createErrorResponse(errors.NewParseBasicAuthHeaderError().(*errors.ParseBasicAuthHeaderError).Message())
 		}
 	}
-	awsQueryConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxRetries)
+	awsQueryConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxReadRetries)
 	if err != nil {
 		timestream.LogError(logger, "Failed to build AWS configuration for query", err)
 		os.Exit(1)
 	}
-	awsWriteConfigs, err := cfg.buildAWSConfig(ctx, writeClientMaxRetries)
+	awsWriteConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxWriteRetries)
 	if err != nil {
 		timestream.LogError(logger, "Failed to build AWS configuration for write", err)
 		os.Exit(1)
@@ -381,10 +381,16 @@ func parseEnvironmentVariables() (*connectionConfig, error) {
 		return nil, err
 	}
 
-	retries := getOrDefault(maxRetriesConfig)
-	cfg.maxRetries, err = strconv.Atoi(retries)
+	readRetries := getOrDefault(maxReadRetriesConfig)
+	cfg.maxReadRetries, err = strconv.Atoi(readRetries)
 	if err != nil {
-		return nil, errors.NewParseRetriesError(retries)
+		return nil, errors.NewParseRetriesError(readRetries, "read")
+	}
+
+	writeRetries := getOrDefault(maxWriteRetriesConfig)
+	cfg.maxWriteRetries, err = strconv.Atoi(writeRetries)
+	if err != nil {
+		return nil, errors.NewParseRetriesError(writeRetries, "write")
 	}
 
 	cfg.promlogConfig = promlog.Config{Level: &promlog.AllowedLevel{}, Format: &promlog.AllowedFormat{}}
@@ -411,7 +417,8 @@ func parseFlags() *connectionConfig {
 
 	a.Flag(enableLogConfig.flag, "Enables or disables logging in the connector. Default to 'true'.").Default(enableLogConfig.defaultValue).StringVar(&enableLogging)
 	a.Flag(regionConfig.flag, "The signing region for the Timestream service. Default to 'us-east-1'.").Default(regionConfig.defaultValue).StringVar(&cfg.clientConfig.region)
-	a.Flag(maxRetriesConfig.flag, "The maximum number of times the read request will be retried for failures. Default to 3.").Default(maxRetriesConfig.defaultValue).IntVar(&cfg.maxRetries)
+	a.Flag(maxReadRetriesConfig.flag, "The maximum number of times the read request will be retried for failures. Default to 3.").Default(maxReadRetriesConfig.defaultValue).IntVar(&cfg.maxReadRetries)
+	a.Flag(maxWriteRetriesConfig.flag, "The maximum number of times the write request will be retried for failures. Default to 10.").Default(maxWriteRetriesConfig.defaultValue).IntVar(&cfg.maxWriteRetries)
 	a.Flag(defaultDatabaseConfig.flag, "The Prometheus label containing the database name for data ingestion.").Default(defaultDatabaseConfig.defaultValue).StringVar(&cfg.defaultDatabase)
 	a.Flag(defaultTableConfig.flag, "The Prometheus label containing the table name for data ingestion.").Default(defaultTableConfig.defaultValue).StringVar(&cfg.defaultTable)
 	a.Flag(listenAddrConfig.flag, "Address to listen on for web endpoints.").Default(listenAddrConfig.defaultValue).StringVar(&cfg.listenAddr)

@@ -134,15 +134,15 @@ func TestWriteClient(t *testing.T) {
 		{"write request with invalid AWS credentials", reqBatchFail, invalidCredentials, true},
 	}
 
-	for _, tc := range invalidTestCases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range invalidTestCases {
+		t.Run(test.name, func(t *testing.T) {
 			var client *timestream.Client
-			if tc.allowLongLabel {
-				client = createClient(t, logger, database, table, tc.creds, true, false)
+			if test.allowLongLabel {
+				client = createClient(t, logger, database, table, test.creds, true, false)
 			} else {
 				client = clientEnableFailOnLongLabelName
 			}
-			err := client.WriteClient().Write(ctx, tc.request, invalidCredentials)
+			err := client.WriteClient().Write(ctx, test.request, invalidCredentials)
 			assert.NotNil(t, err)
 		})
 	}

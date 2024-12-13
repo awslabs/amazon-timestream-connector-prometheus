@@ -229,7 +229,7 @@ func getDatabaseRowCount(t *testing.T, database string, table string) int {
 
 	querySvc := timestreamquery.NewFromConfig(cfg)
 	queryInput := &timestreamquery.QueryInput{
-		QueryString: aws.String(fmt.Sprintf("SELECT count(*) from %s.%s", database, table)),
+		QueryString: aws.String(fmt.Sprintf("SELECT count(*) from \"%s\".\"%s\"", database, table)),
 	}
 
 	out, err := querySvc.Query(ctx, queryInput)

@@ -229,7 +229,6 @@ func (wc *WriteClient) Write(ctx context.Context, req *prompb.WriteRequest, cred
 		LogError(wc.logger, "Unable to construct a new session with the given credentials.", err)
 		return err
 	}
-
 	LogInfo(wc.logger, fmt.Sprintf("%d records requested for ingestion from Prometheus.", len(req.Timeseries)))
 
 	recordMap := make(recordDestinationMap)

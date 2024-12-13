@@ -178,7 +178,8 @@ func setUp() ([]string, *connectionConfig) {
 		enableLogging:   true,
 		enableSigV4Auth: true,
 		listenAddr:      ":9201",
-		maxRetries:      3,
+		maxReadRetries:  3,
+		maxWriteRetries: 10,
 		telemetryPath:   "/metrics",
 	}
 }
@@ -654,35 +655,53 @@ func TestCreateLogger(t *testing.T) {
 		assert.NotEqual(t, nopLogger, logger, "Actual logger must not equal to log.NewNopLogger.")
 	})
 }
+
 func TestBuildAWSConfig(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		expectedRegion := "region"
-		expectedMaxRetries := 3
+	testCases := []struct {
+		name                string
+		maxRetries          int
+		expectedMaxAttempts int
+	}{
+		{
+			name:                "read config",
+			maxRetries:          10,
+			expectedMaxAttempts: 10,
+		},
+		{
+			name:                "write config",
+			maxRetries:          3,
+			expectedMaxAttempts: 3,
+		},
+	}
 
-		input := &connectionConfig{
-			clientConfig: &clientConfig{
-				region: expectedRegion,
-			},
-			maxRetries: expectedMaxRetries,
-		}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			expectedRegion := "region"
+			input := &connectionConfig{
+				clientConfig: &clientConfig{
+					region: expectedRegion,
+				},
+				maxReadRetries:  test.expectedMaxAttempts,
+				maxWriteRetries: test.expectedMaxAttempts,
+			}
 
-		actualOutput, err := input.buildAWSConfig(context.Background(), expectedMaxRetries)
+			actualConfig, err := input.buildAWSConfig(context.Background(), test.maxRetries)
 
-		assert.Nil(t, err)
-		assert.NotNil(t, actualOutput)
+			assert.Nil(t, err)
+			assert.NotNil(t, actualConfig)
+			assert.Equal(t, expectedRegion, actualConfig.Region)
 
-		assert.Equal(t, expectedRegion, actualOutput.Region)
+			retryer := actualConfig.Retryer()
+			assert.NotNil(t, retryer)
 
-		retryer := actualOutput.Retryer()
-		assert.NotNil(t, retryer)
+			standardRetryer, ok := retryer.(*retry.Standard)
+			assert.True(t, ok, "expected retryer to be of type *retry.Standard")
 
-		standardRetryer, ok := retryer.(*retry.Standard)
-		assert.True(t, ok, "expected retryer to be of type *retry.Standard")
-
-		if ok {
-			assert.Equal(t, expectedMaxRetries, standardRetryer.MaxAttempts())
-		}
-	})
+			if ok {
+				assert.Equal(t, test.expectedMaxAttempts, standardRetryer.MaxAttempts())
+			}
+		})
+	}
 }
 
 func TestParseEnvironmentVariables(t *testing.T) {
@@ -704,7 +723,8 @@ func TestParseEnvironmentVariables(t *testing.T) {
 				enableSigV4Auth:           true,
 				failOnInvalidSample:       false,
 				failOnLongMetricLabelName: false,
-				maxRetries:                3,
+				maxReadRetries:            3,
+				maxWriteRetries:           10,
 			},
 			expectedError: nil,
 		},
@@ -727,10 +747,16 @@ func TestParseEnvironmentVariables(t *testing.T) {
 			expectedError:  errors.NewParseSampleOptionError("foo"),
 		},
 		{
-			name:           "error invalid max_retries option",
-			lambdaOptions:  []lambdaEnvOptions{{key: maxRetriesConfig.envFlag, value: "foo"}},
+			name:           "error invalid max_read_retries option",
+			lambdaOptions:  []lambdaEnvOptions{{key: maxReadRetriesConfig.envFlag, value: "foo"}},
 			expectedConfig: nil,
-			expectedError:  errors.NewParseRetriesError("foo"),
+			expectedError:  errors.NewParseRetriesError("foo", "read"),
+		},
+		{
+			name:           "error invalid max_write_retries option",
+			lambdaOptions:  []lambdaEnvOptions{{key: maxWriteRetriesConfig.envFlag, value: "foo"}},
+			expectedConfig: nil,
+			expectedError:  errors.NewParseRetriesError("foo", "write"),
 		},
 	}
 

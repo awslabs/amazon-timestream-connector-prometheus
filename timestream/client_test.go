@@ -19,11 +19,14 @@ import (
 	goErrors "errors"
 	"fmt"
 	"math"
+	"net/http"
 	"reflect"
 	"sort"
 	"strconv"
 	"testing"
 	"time"
+
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -1144,6 +1147,115 @@ func TestWriteClientWrite(t *testing.T) {
 		assert.Equal(t, unknownSDKErr, err)
 
 		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 1)
+	})
+
+	t.Run("invalid credentials provider", func(t *testing.T) {
+		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
+
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
+			return nil, goErrors.New("invalid credentials")
+		}
+
+		c := &Client{
+			queryClient:     nil,
+			defaultDataBase: mockDatabaseName,
+			defaultTable:    mockTableName,
+		}
+		c.writeClient = createNewWriteClientTemplate(c)
+
+		err := c.WriteClient().Write(context.Background(), createNewRequestTemplate(), nil)
+		assert.Error(t, err)
+		assert.Equal(t, "invalid credentials", err.Error())
+
+		mockTimestreamWriteClient.AssertNumberOfCalls(t, "WriteRecords", 0)
+	})
+
+	t.Run("handle 4xx SDK error", func(t *testing.T) {
+		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
+		expectedInput := createNewWriteRecordsInputTemplate()
+
+		responseError := &smithyhttp.ResponseError{
+			Response: &smithyhttp.Response{
+				&http.Response{
+					StatusCode: 400,
+					Header:     http.Header{},
+				},
+			},
+			Err: goErrors.New("InvalidParameterException"),
+		}
+
+		mockTimestreamWriteClient.On(
+			"WriteRecords",
+			mock.Anything,
+			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
+				sortRecords(writeInput)
+				sortRecords(expectedInput)
+				return reflect.DeepEqual(writeInput, expectedInput)
+			}),
+			mock.Anything,
+		).Return(&timestreamwrite.WriteRecordsOutput{}, responseError)
+
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
+			return mockTimestreamWriteClient, nil
+		}
+
+		c := &Client{
+			queryClient:     nil,
+			defaultDataBase: mockDatabaseName,
+			defaultTable:    mockTableName,
+		}
+		c.writeClient = createNewWriteClientTemplate(c)
+
+		req := createNewRequestTemplate()
+		err := c.writeClient.Write(context.Background(), req, mockCredentials)
+		assert.Equal(t, responseError, err)
+
+		mockTimestreamWriteClient.AssertCalled(t, "WriteRecords", mock.Anything, expectedInput, mock.Anything)
+		mockTimestreamWriteClient.AssertExpectations(t)
+	})
+
+	t.Run("handle 5xx SDK error", func(t *testing.T) {
+		mockTimestreamWriteClient := new(mockTimestreamWriteClient)
+		expectedInput := createNewWriteRecordsInputTemplate()
+
+		responseError := &smithyhttp.ResponseError{
+			Response: &smithyhttp.Response{
+				&http.Response{
+					StatusCode: 500,
+					Header:     http.Header{},
+				},
+			},
+			Err: goErrors.New("InternalServerError"),
+		}
+
+		mockTimestreamWriteClient.On(
+			"WriteRecords",
+			mock.Anything,
+			mock.MatchedBy(func(writeInput *timestreamwrite.WriteRecordsInput) bool {
+				sortRecords(writeInput)
+				sortRecords(expectedInput)
+				return reflect.DeepEqual(writeInput, expectedInput)
+			}),
+			mock.Anything,
+		).Return(&timestreamwrite.WriteRecordsOutput{}, responseError)
+
+		initWriteClient = func(config aws.Config) (TimestreamWriteClient, error) {
+			return mockTimestreamWriteClient, nil
+		}
+
+		c := &Client{
+			queryClient:     nil,
+			defaultDataBase: mockDatabaseName,
+			defaultTable:    mockTableName,
+		}
+		c.writeClient = createNewWriteClientTemplate(c)
+
+		req := createNewRequestTemplate()
+		err := c.writeClient.Write(context.Background(), req, mockCredentials)
+		assert.Equal(t, responseError, err)
+
+		mockTimestreamWriteClient.AssertCalled(t, "WriteRecords", mock.Anything, expectedInput, mock.Anything)
+		mockTimestreamWriteClient.AssertExpectations(t)
 	})
 }
 
