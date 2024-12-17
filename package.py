@@ -42,30 +42,30 @@ def create_directory(dir_name):
     copy_tree("documentation", dir_name + "/documentation")
 
 
-def run_build(target_bin):
+def run_build(target_bin, arch):
     """
     Compiles a binary for the target OS.
 
     :type target_bin: str
     :param target_bin: The target OS for the binary.
+    :type arch: str
+    :param arch: The target architecture.
     :return: The name of the binary.
     """
-    os.environ['GOOS'] = target_bin
-    arch = "amd64"
-    os.environ['GOARCH'] = arch
-
-    if os.getenv('GOOS') is None or os.getenv('GOARCH') is None:
-        logging.error("Environment variables GOOS or GOARCH are not set.")
+    if not target_bin or not arch:
+        logging.error("Target binary or architecture not specified.")
         return None
 
     # Required for Lambda runtime platform.al2023
     file_name = "bootstrap"
 
-    build_command = "go build -o {}/{}".format(target_bin, file_name)
+    build_command = f"GOOS={target_bin} GOARCH={arch} go build -o {target_bin}/{file_name}"
     if target_bin == "windows":
         build_command += ".exe"
-    logging.debug("Compiling binary for {} with command: {}".format(target_bin, build_command))
-    subprocess.Popen(build_command, shell=True, stdout=subprocess.PIPE)
+    logging.debug("Compiling binary for {}-{} with command: {}".format(target_bin, arch, build_command))
+
+    process = subprocess.Popen(build_command, shell=True, stdout=subprocess.PIPE)
+    process.communicate()
     return file_name
 
 
@@ -111,19 +111,22 @@ def zip_dir(file_name):
     shutil.make_archive(file_name, 'zip', "linux")
 
 
-def package_sam_template(linux_bin_name, source_dir, version):
+def package_sam_template(linux_bin_name, arch, source_dir, version):
     """
     Package all relevant artifacts for serverless deployment in a tarball.
 
     :type linux_bin_name: str
     :param linux_bin_name: The name of the precompiled binary for Linux.
+    :type arch: str
+    :param arch: The target architecture.
     :type source_dir: str
     :param source_dir: The directory containing the SAM template and its documentation.
     :type version: str
     :param version: The artifact version.
     :return: None
     """
-    tarfile_name = "timestream-prometheus-connector-serverless-application-{version}.tar.gz".format(version=version)
+    tarfile_name = "timestream-prometheus-connector-serverless-application-{arch}-{version}.tar.gz".format(
+        arch=arch, version=version)
     linux_zip = "{file_name}.zip".format(file_name=linux_bin_name)
 
     with tarfile.open(tarfile_name, "w:gz") as tar:
@@ -149,24 +152,25 @@ def tar_dir(file_name, dir_name):
     subprocess.Popen(tar_command, shell=True, stdout=subprocess.PIPE)
 
 
-def create_tarball(target_folder, version):
+def create_tarball(target_folder, arch, version):
     """
     Create a tarball containing a precompiled binary and all documentation.
 
     :type target_folder: str
     :param target_folder: The temporary folder containing the precompiled binary and all documentation.
+    :type arch: str
+    :param arch: The target architecture.
     :type version: str
     :param version: The version of the Prometheus Connector.
     :return: The name of the precompiled binary.
     """
     create_directory(target_folder)
-    bin_name = run_build(target_folder)
+    bin_name = run_build(target_folder, arch)
     if bin_name is None:
         logging.error("Cannot create binary for packaging.")
         return
 
     check_binary(target_folder, bin_name)
-    arch = "amd64"
     archive_name = "timestream-prometheus-connector-{}-{}-{}".format(target_folder, arch, version)
     tar_dir(archive_name, target_folder)
     return archive_name
@@ -179,15 +183,17 @@ if __name__ == "__main__":
 
     connector_version = args.version
     logging.basicConfig(level=logging.INFO)
-    targets = ["windows", "darwin"]
-    linux_file_name = ""
+    targets = ["windows", "darwin", "linux"]
+    archs = ["amd64", "arm64"]
+
     try:
         for target in targets:
-            create_tarball(target, connector_version)
+            for arch in archs:
+                bin_name = create_tarball(target, arch, connector_version)
+                if target == "linux":
+                    zip_dir(bin_name)
+                    package_sam_template(bin_name, arch, "./serverless", connector_version)
 
-        bin_name = create_tarball("linux", connector_version)
-        zip_dir(bin_name)
-        package_sam_template(bin_name, "./serverless", connector_version)
         logging.info("Done running script.")
 
     except OSError:
