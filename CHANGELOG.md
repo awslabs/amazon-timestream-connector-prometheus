@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.3.1](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.3.1) - 2024-12-17
+### Dependencies
+- [AWS SDK Go V2 Upgrade](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/83)
+
+### Added
+- [Add ARM support](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/81)
+
+### Removed
+- [Remove invalid deployment links](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/80)
+
 ## [v1.3.0](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.3.0) - 2024-11-20
 ### Dependencies
 - [Upgrade grpc](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/79)
