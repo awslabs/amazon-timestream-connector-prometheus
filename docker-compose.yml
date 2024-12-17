@@ -1,0 +1,13 @@
+services:
+  timestream-prometheus-connector:
+    container_name: connector
+    build: .
+    ports:
+      - "9201:9201"
+    volumes:
+      - .:/home
+    command:
+      - --default-database=PrometheusDatabase
+      - --default-table=PrometheusMetricsTable
+      - --region=us-east-1
+      - --log.level=debug

@@ -16,8 +16,9 @@ package errors
 
 import (
 	"fmt"
-	"github.com/prometheus/prometheus/prompb"
 	"net/http"
+
+	"github.com/prometheus/prometheus/prompb"
 )
 
 type baseConnectorError struct {
@@ -95,13 +96,20 @@ type ParseRetriesError struct {
 	baseConnectorError
 }
 
-func NewParseRetriesError(retries string) error {
-	return &ParseRetriesError{baseConnectorError: baseConnectorError{
-		statusCode: http.StatusBadRequest,
-		errorMsg:   fmt.Sprintf("error occurred while parsing max-retries, expected an integer, but received '%s'", retries),
-		message: "The value specified in the max-retries option is not one of the accepted values. " +
-			acceptedValueErrorMessage,
-	}}
+func NewParseRetriesError(retries string, operation string) error {
+	return &ParseRetriesError{
+		baseConnectorError: baseConnectorError{
+			statusCode: http.StatusBadRequest,
+			errorMsg: fmt.Sprintf(
+				"error occurred while parsing max-%s-retries, expected an integer, but received '%s'",
+				operation, retries,
+			),
+			message: fmt.Sprintf(
+				"The value specified in the max-%s-retries option is not one of the accepted values. %s",
+				operation, acceptedValueErrorMessage,
+			),
+		},
+	}
 }
 
 type ParseBasicAuthHeaderError struct {
