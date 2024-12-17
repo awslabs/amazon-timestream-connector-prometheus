@@ -297,17 +297,6 @@ func TestQueryClientRead(t *testing.T) {
 	}
 
 	queryInputWithInvalidRegex := &timestreamquery.QueryInput{
-		QueryString: aws.String(fmt.Sprintf(
-			"SELECT * FROM %s.%s WHERE %s = '%s' AND REGEXP_LIKE(job, '%s') AND %s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)",
-			mockDatabaseName,
-			mockTableName,
-			measureNameColumnName,
-			metricName,
-			invalidRegex,
-			timeColumnName,
-			startUnixInSeconds,
-			endUnixInSeconds,
-		)),
 		QueryString: aws.String(fmt.Sprintf("SELECT * FROM \"%s\".\"%s\" WHERE \"%s\" = '%s' AND REGEXP_LIKE(\"job\", '%s') AND %s BETWEEN FROM_UNIXTIME(%d) AND FROM_UNIXTIME(%d)",
 			mockDatabaseName, mockTableName, measureNameColumnName, metricName, invalidRegex, timeColumnName, startUnixInSeconds, endUnixInSeconds)),
 	}
