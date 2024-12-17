@@ -18,68 +18,71 @@ and limitations under the License.
 package timestream
 
 import (
+	"context"
+	goErrors "errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/timestreamquery"
-	"github.com/aws/aws-sdk-go/service/timestreamquery/timestreamqueryiface"
-	"github.com/aws/aws-sdk-go/service/timestreamwrite"
-	"github.com/aws/aws-sdk-go/service/timestreamwrite/timestreamwriteiface"
-	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/prompb"
 	"math"
 	"strconv"
 	"strings"
 	"time"
-	"timestream-prometheus-connector/errors"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/middleware"
+	"github.com/aws/aws-sdk-go-v2/service/timestreamquery"
+	qtypes "github.com/aws/aws-sdk-go-v2/service/timestreamquery/types"
+	"github.com/aws/aws-sdk-go-v2/service/timestreamwrite"
+	wtypes "github.com/aws/aws-sdk-go-v2/service/timestreamwrite/types"
+	"github.com/aws/smithy-go"
+	"github.com/aws/smithy-go/transport/http"
+
+	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	prometheusClientModel "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/prompb"
+
+	"timestream-prometheus-connector/errors"
 )
 
 type labelOperation string
 type longMetricsOperation func(measureValueName string) (labelOperation, error)
 
-var addUserAgent = request.NamedHandler {
-	Name: "UserAgentHandler",
-	Fn: request.MakeAddToUserAgentHandler("Prometheus Connector", Version),
-}
+var addUserAgentMiddleware = middleware.AddUserAgentKey("Prometheus Connector/" + Version)
 
 // Store the initialization function calls to allow unit tests to mock the creation of real clients.
-var initWriteClient = func(config *aws.Config) (timestreamwriteiface.TimestreamWriteAPI, error) {
-	sess, err := session.NewSession(config)
-	if err != nil {
-		return nil, err
-	}
-	sess.Handlers.Build.PushFrontNamed(addUserAgent)
-	return timestreamwrite.New(sess), nil
+var initWriteClient = func(cfg aws.Config) (TimestreamWriteClient, error) {
+	client := timestreamwrite.NewFromConfig(cfg, func(o *timestreamwrite.Options) {
+		o.APIOptions = append(o.APIOptions, addUserAgentMiddleware)
+	})
+	return client, nil
 }
-var initQueryClient = func(config *aws.Config) (timestreamqueryiface.TimestreamQueryAPI, error) {
-	sess, err := session.NewSession(config)
-	if err != nil {
-		return nil, err
+
+var initQueryClient = func(cfg aws.Config) (*timestreamquery.Client, error) {
+	client := timestreamquery.NewFromConfig(cfg, func(o *timestreamquery.Options) {
+		o.APIOptions = append(o.APIOptions, addUserAgentMiddleware)
+	})
+	return client, nil
+}
+
+var initPaginatorFactory = func(timestreamQuery *timestreamquery.Client, queryInput *timestreamquery.QueryInput) Paginator {
+	return &TimestreamPaginator{
+		paginator: timestreamquery.NewQueryPaginator(timestreamQuery, queryInput),
 	}
-	sess.Handlers.Build.PushFrontNamed(addUserAgent)
-	return timestreamquery.New(sess), nil
 }
 
 // recordDestinationMap is a nested map that stores slices of Records based on the ingestion destination.
 // Below is an example of the map structure:
-// records := map[string]map[string][]*timestreamwrite.Record{
-// 		"database1": map[string][]*timestreamwrite.Record{
-// 				"table1":[]*timestreamwrite.Record{record1, record2},
-// 				"table2":[]*timestreamwrite.Record{record3},
-// 		},
-// 		"database2": map[string]string{
-// 				"table3":[]*timestreamwrite.Record{record4, record5},
-// 				"table4":[]*timestreamwrite.Record{record6},
-// 		},
-// }
-type recordDestinationMap map[string]map[string][]*timestreamwrite.Record
+//
+//	records := map[string]map[string][]wtypes.Record{
+//			"database1": map[string][]wtypes.Record{
+//					"table1":[]wtypes.Record{record1, record2},
+//					"table2":[]wtypes.Record{record3},
+//			},
+//			"database2": map[string]string{
+//					"table3":[]wtypes.Record{record4, record5},
+//					"table4":[]wtypes.Record{record6},
+//			},
+type recordDestinationMap map[string]map[string][]wtypes.Record
 
 const (
 	maxWriteBatchLength         int            = 100
@@ -97,22 +100,22 @@ const (
 
 type QueryClient struct {
 	client            *Client
-	config            *aws.Config
+	config            aws.Config
 	logger            log.Logger
 	readExecutionTime prometheus.Histogram
 	readRequests      prometheus.Counter
-	timestreamQuery   timestreamqueryiface.TimestreamQueryAPI
+	timestreamQuery   *timestreamquery.Client
 }
 
 type WriteClient struct {
 	client                    *Client
-	config                    *aws.Config
+	config                    aws.Config
 	logger                    log.Logger
 	ignoredSamples            prometheus.Counter
 	receivedSamples           prometheus.Counter
 	writeRequests             prometheus.Counter
 	writeExecutionTime        prometheus.Histogram
-	timestreamWrite           timestreamwriteiface.TimestreamWriteAPI
+	timestreamWrite           TimestreamWriteClient
 	failOnLongMetricLabelName bool
 	failOnInvalidSample       bool
 }
@@ -123,6 +126,31 @@ type Client struct {
 	defaultDataBase string
 	defaultTable    string
 }
+
+type TimestreamWriteClient interface {
+	WriteRecords(ctx context.Context, input *timestreamwrite.WriteRecordsInput, optFns ...func(*timestreamwrite.Options)) (*timestreamwrite.WriteRecordsOutput, error)
+}
+
+// Paginator defines the interface for Timestream pagination
+type Paginator interface {
+	HasMorePages() bool
+	NextPage(ctx context.Context) (*timestreamquery.QueryOutput, error)
+}
+
+// TimestreamPaginator wraps the actual Timestream paginator to support mocking in unit tests
+type TimestreamPaginator struct {
+	paginator *timestreamquery.QueryPaginator
+}
+
+func (tp *TimestreamPaginator) HasMorePages() bool {
+	return tp.paginator.HasMorePages()
+}
+
+func (tp *TimestreamPaginator) NextPage(ctx context.Context) (*timestreamquery.QueryOutput, error) {
+	return tp.paginator.NextPage(ctx)
+}
+
+type PaginatorFactory func(queryInput *timestreamquery.QueryInput) Paginator
 
 // NewBaseClient creates a Timestream Client object with the ingestion destination labels.
 func NewBaseClient(defaultDataBase, defaultTable string) *Client {
@@ -135,7 +163,7 @@ func NewBaseClient(defaultDataBase, defaultTable string) *Client {
 }
 
 // NewQueryClient creates a new Timestream query client with the given set of configuration.
-func (c *Client) NewQueryClient(logger log.Logger, configs *aws.Config) {
+func (c *Client) NewQueryClient(logger log.Logger, configs aws.Config) {
 	c.queryClient = &QueryClient{
 		client: c,
 		logger: logger,
@@ -157,7 +185,7 @@ func (c *Client) NewQueryClient(logger log.Logger, configs *aws.Config) {
 }
 
 // NewWriteClient creates a new Timestream write client with a given set of configurations.
-func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) {
+func (c *Client) NewWriteClient(logger log.Logger, configs aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) {
 	c.writeClient = &WriteClient{
 		client:                    c,
 		logger:                    logger,
@@ -193,8 +221,8 @@ func (c *Client) NewWriteClient(logger log.Logger, configs *aws.Config, failOnLo
 }
 
 // Write sends the prompb.WriteRequest to timestreamwriteiface.TimestreamWriteAPI
-func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.Credentials) error {
-	wc.config.Credentials = credentials
+func (wc *WriteClient) Write(ctx context.Context, req *prompb.WriteRequest, credentialsProvider aws.CredentialsProvider) error {
+	wc.config.Credentials = credentialsProvider
 	var err error
 	wc.timestreamWrite, err = initWriteClient(wc.config)
 	if err != nil {
@@ -202,6 +230,7 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 		return err
 	}
 	LogInfo(wc.logger, fmt.Sprintf("%d records requested for ingestion from Prometheus.", len(req.Timeseries)))
+
 	recordMap := make(recordDestinationMap)
 	recordMap, err = wc.convertToRecords(req.Timeseries, recordMap)
 	if err != nil {
@@ -212,31 +241,38 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 	var sdkErr error
 	for database, tableMap := range recordMap {
 		for table, records := range tableMap {
+			recordLen := len(records)
 			// Timestream will return an error if more than 100 records are sent in a batch.
 			// Therefore, records should be chunked if there are more than 100 of them
-			var chunkEndIndex int
-			for chunkStartIndex := 0; chunkStartIndex < len(records); chunkStartIndex += maxWriteBatchLength {
-				chunkEndIndex += maxWriteBatchLength
-				if chunkEndIndex > len(records) {
-					chunkEndIndex = len(records)
+			for chunkStartIndex := 0; chunkStartIndex < recordLen; chunkStartIndex += maxWriteBatchLength {
+				chunkEndIndex := chunkStartIndex + maxWriteBatchLength
+				if chunkEndIndex > recordLen {
+					chunkEndIndex = recordLen
 				}
+
+				currentChunkSize := chunkEndIndex - chunkStartIndex
+
 				writeRecordsInput := &timestreamwrite.WriteRecordsInput{
 					DatabaseName: aws.String(database),
 					TableName:    aws.String(table),
 					Records:      records[chunkStartIndex:chunkEndIndex],
 				}
+
 				begin := time.Now()
-				_, err = wc.timestreamWrite.WriteRecords(writeRecordsInput)
+				_, err = wc.timestreamWrite.WriteRecords(ctx, writeRecordsInput)
 				duration := time.Since(begin).Seconds()
+
 				if err != nil {
 					sdkErr = wc.handleSDKErr(req, err, sdkErr)
 				} else {
-					LogInfo(wc.logger, fmt.Sprintf("Successfully wrote %d records to database: %s table: %s", len(writeRecordsInput.Records), database, table))
+					LogInfo(wc.logger, fmt.Sprintf("Successfully wrote %d records to Database: %s, Table: %s", currentChunkSize, database, table))
+
 					recordsIgnored := getCounterValue(wc.ignoredSamples)
-					if (recordsIgnored > 0) {
-						LogInfo(wc.logger, fmt.Sprintf("%d number of records were rejected for ingestion to Timestream. See Troubleshooting in the README for why these may be rejected, or turn on debug logging for additional info.", recordsIgnored))
+					if recordsIgnored > 0 {
+						LogInfo(wc.logger, fmt.Sprintf("%d records were rejected for ingestion to Timestream. See Troubleshooting in the README for possible reasons, or enable debug logging for more details.", recordsIgnored))
 					}
 				}
+
 				wc.writeExecutionTime.Observe(duration)
 				wc.writeRequests.Inc()
 			}
@@ -248,15 +284,18 @@ func (wc *WriteClient) Write(req *prompb.WriteRequest, credentials *credentials.
 
 // Read converts the Prometheus prompb.ReadRequest into Timestream queries and return
 // the result set as Prometheus prompb.ReadResponse.
-func (qc *QueryClient) Read(req *prompb.ReadRequest, credentials *credentials.Credentials) (*prompb.ReadResponse, error) {
-	qc.config.Credentials = credentials
+func (qc *QueryClient) Read(
+	ctx context.Context,
+	req *prompb.ReadRequest,
+	credentialsProvider aws.CredentialsProvider,
+) (*prompb.ReadResponse, error) {
+	qc.config.Credentials = credentialsProvider
 	var err error
 	qc.timestreamQuery, err = initQueryClient(qc.config)
 	if err != nil {
 		LogError(qc.logger, "Unable to construct a new session with the given credentials", err)
 		return nil, err
 	}
-
 	queryInputs, isRelatedToRegex, err := qc.buildCommands(req.Queries)
 	if err != nil {
 		LogError(qc.logger, "Error occurred while translating Prometheus query.", err)
@@ -268,33 +307,38 @@ func (qc *QueryClient) Read(req *prompb.ReadRequest, credentials *credentials.Cr
 
 	begin := time.Now()
 	var queryPageError error
+
 	for _, queryInput := range queryInputs {
-		queryPageError = qc.timestreamQuery.QueryPages(queryInput,
-			func(page *timestreamquery.QueryOutput, lastPage bool) bool {
-				var convertError error
-				resultSet, convertError = qc.convertToResult(resultSet, page)
-				qc.readRequests.Inc()
-				if convertError != nil {
-					LogError(qc.logger, "Error occurred while converting the Timestream query results to Prometheus QueryResults", err)
-					return false
-				}
-				LogInfo(qc.logger, fmt.Sprintf("Successfully read %d records from database: %s table: %s", len(page.Rows), qc.client.defaultDataBase, qc.client.defaultTable))
-				return true
-			})
-		if queryPageError != nil {
-			if requestError, ok := queryPageError.(awserr.RequestFailure); ok && (requestError.StatusCode()/100 == 4) {
-				LogDebug(qc.logger, "The read request failed while retrieving data back from Timestream.", "request", req)
+		paginator := initPaginatorFactory(qc.timestreamQuery, queryInput)
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(ctx)
+			if err != nil {
+				queryPageError = err
+				LogError(qc.logger, "Error occurred while fetching the next page of results.", err)
+				break
 			}
 
-			if _, ok := queryPageError.(*timestreamquery.ValidationException); ok && isRelatedToRegex {
+			resultSet, err = qc.convertToResult(resultSet, page)
+			qc.readRequests.Inc()
+			if err != nil {
+				LogError(qc.logger, "Error occurred while converting the Timestream query results to Prometheus QueryResults", err)
+				return nil, err
+			}
+
+		}
+
+		if queryPageError != nil {
+			var apiError *smithy.GenericAPIError
+			if goErrors.As(queryPageError, &apiError) && apiError.Code == "ValidationException" && isRelatedToRegex {
 				LogError(qc.logger, "Error occurred due to unsupported query. Please validate the regular expression used in the query. Check the documentation for unsupported RE2 syntax.", queryPageError)
 				return nil, queryPageError
 			}
 
-			LogError(qc.logger, "Error occurred while querying Timestream pages.", err)
+			LogError(qc.logger, "Error occurred while querying Timestream pages.", queryPageError)
 			return nil, queryPageError
 		}
 	}
+
 	duration := time.Since(begin).Seconds()
 	qc.readExecutionTime.Observe(duration)
 
@@ -305,26 +349,31 @@ func (qc *QueryClient) Read(req *prompb.ReadRequest, credentials *credentials.Cr
 
 // handleSDKErr parses and logs the error from SDK (if any)
 func (wc *WriteClient) handleSDKErr(req *prompb.WriteRequest, currErr error, errToReturn error) error {
-	requestError, ok := currErr.(awserr.RequestFailure)
-	if !ok {
+	var responseError *http.ResponseError
+	if !goErrors.As(currErr, &responseError) {
 		LogError(wc.logger, fmt.Sprintf("Error occurred while ingesting Timestream Records. %d records failed to be written", len(req.Timeseries)), currErr)
-		return errors.NewSDKNonRequestError(currErr)
+		return currErr
 	}
 
 	if errToReturn == nil {
-		errToReturn = requestError
+		errToReturn = currErr
 	}
-	switch requestError.StatusCode() / 100 {
+
+	statusCode := responseError.HTTPStatusCode()
+	switch statusCode / 100 {
 	case 4:
-		LogDebug(wc.logger, "Error occurred while ingesting data due to invalid write request. Some Prometheus Samples were not ingested into Timestream, please review the write request and check the documentation for troubleshooting.", "request", req)
+		LogDebug(wc.logger, "Error occurred while ingesting data due to invalid write request. "+
+			"Some Prometheus Samples were not ingested into Timestream, please review the write request and check the documentation for troubleshooting.",
+			"request", req)
 	case 5:
-		errToReturn = requestError
+		errToReturn = currErr
 		LogDebug(wc.logger, "Internal server error occurred. Samples will be retried by Prometheus", "request", req)
 	}
+
 	return errToReturn
 }
 
-// convertToRecords converts a slice of *prompb.TimeSeries to a slice of *timestreamwrite.Record
+// convertToRecords converts a slice of *prompb.TimeSeries to a slice of wtypes.Record
 func (wc *WriteClient) convertToRecords(series []*prompb.TimeSeries, recordMap recordDestinationMap) (recordDestinationMap, error) {
 	var operationOnLongMetrics longMetricsOperation
 	if wc.failOnLongMetricLabelName {
@@ -350,10 +399,10 @@ func (wc *WriteClient) convertToRecords(series []*prompb.TimeSeries, recordMap r
 	return processTimeSeries(wc, operationOnLongMetrics, series, recordMap)
 }
 
-// processTimeSeries processes a slice of *prompb.TimeSeries to a slice of *timestreamwrite.Record
+// processTimeSeries processes a slice of *prompb.TimeSeries to a slice of wtypes.Record
 func processTimeSeries(wc *WriteClient, operationOnLongMetrics longMetricsOperation, series []*prompb.TimeSeries, recordMap recordDestinationMap) (recordDestinationMap, error) {
 	for _, timeSeries := range series {
-		var dimensions []*timestreamwrite.Dimension
+		var dimensions []wtypes.Dimension
 		var err error
 		var operation labelOperation
 		var databaseName string
@@ -395,7 +444,7 @@ func processTimeSeries(wc *WriteClient, operationOnLongMetrics longMetricsOperat
 
 		recordMap[databaseName] = getOrCreateRecordMapEntry(recordMap, databaseName)
 
-		var records []*timestreamwrite.Record
+		var records []wtypes.Record
 
 		if recordMap[databaseName][tableName] != nil {
 			records = recordMap[databaseName][tableName]
@@ -417,13 +466,13 @@ func processTimeSeries(wc *WriteClient, operationOnLongMetrics longMetricsOperat
 	return recordMap, nil
 }
 
-// processMetricLabels processes metricLabels to a *timestreamwrite.Record
-func processMetricLabels(metricLabels map[string]string, operationOnLongMetrics longMetricsOperation) ([]*timestreamwrite.Dimension, labelOperation, error) {
+// processMetricLabels processes metricLabels to a wtypes.Record
+func processMetricLabels(metricLabels map[string]string, operationOnLongMetrics longMetricsOperation) ([]wtypes.Dimension, labelOperation, error) {
 	var operation labelOperation
-	var dimensions []*timestreamwrite.Dimension
+	var dimensions []wtypes.Dimension
 	var err error
 	for name, value := range metricLabels {
-		// Each label in the metricLabels map contains a characteristic/dimension of the metric, which maps to timestreamwrite.Dimension
+		// Each label in the metricLabels map contains a characteristic/dimension of the metric, which maps to wtypes.Dimension
 		operation, err = operationOnLongMetrics(name)
 		switch operation {
 		case failed:
@@ -431,7 +480,7 @@ func processMetricLabels(metricLabels map[string]string, operationOnLongMetrics 
 		case ignored:
 			return nil, operation, nil
 		default:
-			dimensions = append(dimensions, &timestreamwrite.Dimension{
+			dimensions = append(dimensions, wtypes.Dimension{
 				Name:  aws.String(name),
 				Value: aws.String(value),
 			})
@@ -441,16 +490,16 @@ func processMetricLabels(metricLabels map[string]string, operationOnLongMetrics 
 }
 
 // getOrCreateRecordMapEntry gets record map entry
-func getOrCreateRecordMapEntry(recordMap recordDestinationMap, databaseName string) map[string][]*timestreamwrite.Record {
+func getOrCreateRecordMapEntry(recordMap recordDestinationMap, databaseName string) map[string][]wtypes.Record {
 	if recordMap[databaseName] == nil {
-		recordMap[databaseName] = make(map[string][]*timestreamwrite.Record)
+		recordMap[databaseName] = make(map[string][]wtypes.Record)
 	}
 	return recordMap[databaseName]
 }
 
 // convertToMap converts the slice of Labels to a Map and retrieves the measure value name.
 func convertToMap(labels []*prompb.Label) (map[string]string, string) {
-	// measureValueName is the Prometheus metric name that maps to MeasureName of a timestreamwrite.Record
+	// measureValueName is the Prometheus metric name that maps to MeasureName of a wtypes.Record
 	var measureValueName string
 
 	metric := make(map[string]string, len(labels))
@@ -464,7 +513,7 @@ func convertToMap(labels []*prompb.Label) (map[string]string, string) {
 }
 
 // appendRecords converts each valid Prometheus Sample to a Timestream Record and append the Record to the given slice of records.
-func (wc *WriteClient) appendRecords(records []*timestreamwrite.Record, timeSeries *prompb.TimeSeries, dimensions []*timestreamwrite.Dimension, measureValueName string) ([]*timestreamwrite.Record, error) {
+func (wc *WriteClient) appendRecords(records []wtypes.Record, timeSeries *prompb.TimeSeries, dimensions []wtypes.Dimension, measureValueName string) ([]wtypes.Record, error) {
 	var operationOnInvalidSample func(timeSeriesValue float64) (labelOperation, error)
 	if wc.failOnInvalidSample {
 		operationOnInvalidSample = func(timeSeriesValue float64) (labelOperation, error) {
@@ -489,7 +538,7 @@ func (wc *WriteClient) appendRecords(records []*timestreamwrite.Record, timeSeri
 	}
 
 	for _, sample := range timeSeries.Samples {
-		// sample.Value is the measured value of a metric which maps to the MeasureValue in timestreamwrite.Record
+		// sample.Value is the measured value of a metric which maps to the MeasureValue in wtypes.Record
 		timeSeriesValue := sample.Value
 		operation, err := operationOnInvalidSample(timeSeriesValue)
 
@@ -501,13 +550,13 @@ func (wc *WriteClient) appendRecords(records []*timestreamwrite.Record, timeSeri
 		default:
 		}
 
-		records = append(records, &timestreamwrite.Record{
+		records = append(records, wtypes.Record{
 			Dimensions:       dimensions,
 			MeasureName:      aws.String(measureValueName),
 			MeasureValue:     aws.String(strconv.FormatFloat(timeSeriesValue, 'f', 6, 64)),
-			MeasureValueType: aws.String(timestreamwrite.MeasureValueTypeDouble),
+			MeasureValueType: wtypes.MeasureValueTypeDouble,
 			Time:             aws.String(strconv.FormatInt(sample.Timestamp, 10)),
-			TimeUnit:         aws.String(timestreamwrite.TimeUnitMilliseconds),
+			TimeUnit:         wtypes.TimeUnitMilliseconds,
 		})
 	}
 
@@ -584,6 +633,7 @@ func (qc *QueryClient) convertToResult(results *prompb.QueryResult, page *timest
 	}
 
 	for _, row := range rows {
+
 		labels, samples, err := qc.constructLabels(row.Data, page.ColumnInfo)
 		if err != nil {
 			LogDebug(qc.logger, "Error occurred when constructing Prometheus Labels from Timestream QueryOutput with Row", "row", row)
@@ -597,34 +647,39 @@ func (qc *QueryClient) convertToResult(results *prompb.QueryResult, page *timest
 }
 
 // constructLabels converts the given row to the corresponding Prometheus Label and Sample.
-func (qc *QueryClient) constructLabels(row []*timestreamquery.Datum, metadata []*timestreamquery.ColumnInfo) ([]*prompb.Label, prompb.Sample, error) {
+func (qc *QueryClient) constructLabels(row []qtypes.Datum, metadata []qtypes.ColumnInfo) ([]*prompb.Label, prompb.Sample, error) {
 	var labels []*prompb.Label
 	var sample prompb.Sample
+
 	for i, datum := range row {
+
 		if datum.NullValue == nil {
 			column := metadata[i]
 			switch *column.Name {
 			case timeColumnName:
 				timestamp, err := time.Parse(timestampLayout, *datum.ScalarValue)
 				if err != nil {
-					err := fmt.Errorf("error occured while parsing '%d' as a timestamp", datum.ScalarValue)
+					err := fmt.Errorf("error occurred while parsing '%s' as a timestamp", *datum.ScalarValue)
 					LogError(qc.logger, "Invalid datum type retrieved from Timestream", err)
 					return labels, sample, err
 				}
 				sample.Timestamp = timestamp.UnixNano() / nanosToMillisConversionRate
+
 			case measureValueColumnName:
 				val, err := strconv.ParseFloat(*datum.ScalarValue, 64)
 				if err != nil {
-					err := fmt.Errorf("error occured while parsing '%d' as a float", datum.ScalarValue)
+					err := fmt.Errorf("error occurred while parsing '%s' as a float", *datum.ScalarValue)
 					LogError(qc.logger, "Invalid datum type retrieved from Timestream", err)
 					return labels, sample, err
 				}
 				sample.Value = val
+
 			case measureNameColumnName:
 				labels = append(labels, &prompb.Label{
 					Name:  model.MetricNameLabel,
 					Value: *datum.ScalarValue,
 				})
+
 			default:
 				labels = append(labels, &prompb.Label{
 					Name:  *column.Name,

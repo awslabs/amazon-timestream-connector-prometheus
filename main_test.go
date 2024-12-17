@@ -14,25 +14,10 @@ and limitations under the License.
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	goErrors "errors"
 	"fmt"
-	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/private/protocol"
-	"github.com/aws/aws-sdk-go/service/timestreamquery"
-	"github.com/aws/aws-sdk-go/service/timestreamwrite"
-	"github.com/go-kit/log"
-	"github.com/gogo/protobuf/proto"
-	"github.com/golang/snappy"
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/promlog"
-	"github.com/prometheus/prometheus/prompb"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +28,22 @@ import (
 	"time"
 	"timestream-prometheus-connector/errors"
 	"timestream-prometheus-connector/timestream"
+
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
+	wtypes "github.com/aws/aws-sdk-go-v2/service/timestreamwrite/types"
+	"github.com/aws/smithy-go"
+	"github.com/go-kit/log"
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/promlog"
+	"github.com/prometheus/prometheus/prompb"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 const (
@@ -55,7 +56,7 @@ const (
 	assertResponseMessage = "Error must not occur while reading the response body from the test output."
 	writeRequestType      = "*prompb.WriteRequest"
 	readRequestType       = "*prompb.ReadRequest"
-	awsCredentialsType    = "*credentials.Credentials"
+	awsCredentialsType    = "*aws.CredentialsCache"
 )
 
 var (
@@ -147,8 +148,8 @@ type requestTestCase struct {
 	expectedStatusCode int
 }
 
-func (m *mockWriter) Write(req *prompb.WriteRequest, credentials *credentials.Credentials) error {
-	args := m.Called(req, credentials)
+func (m *mockWriter) Write(ctx context.Context, req *prompb.WriteRequest, credentialsProvider aws.CredentialsProvider) error {
+	args := m.Called(ctx, req, credentialsProvider)
 	return args.Error(0)
 }
 
@@ -157,8 +158,8 @@ type mockReader struct {
 	reader
 }
 
-func (m *mockReader) Read(req *prompb.ReadRequest, credentials *credentials.Credentials) (*prompb.ReadResponse, error) {
-	args := m.Called(req, credentials)
+func (m *mockReader) Read(ctx context.Context, req *prompb.ReadRequest, credentialsProvider aws.CredentialsProvider) (*prompb.ReadResponse, error) {
+	args := m.Called(ctx, req, credentialsProvider)
 	return args.Get(0).(*prompb.ReadResponse), args.Error(1)
 }
 
@@ -170,14 +171,15 @@ func setUp() ([]string, *connectionConfig) {
 	promLogLevel.Set("info")
 
 	return []string{"cmd", "--default-database=foo", "--default-table=bar"}, &connectionConfig{
-		clientConfig:  &clientConfig{region: "us-east-1"},
-		promlogConfig: promlog.Config{Format: promLogFormat, Level: promLogLevel},
+		clientConfig:    &clientConfig{region: "us-east-1"},
+		promlogConfig:   promlog.Config{Format: promLogFormat, Level: promLogLevel},
 		defaultDatabase: "foo",
 		defaultTable:    "bar",
 		enableLogging:   true,
 		enableSigV4Auth: true,
 		listenAddr:      ":9201",
-		maxRetries:      3,
+		maxReadRetries:  3,
+		maxWriteRetries: 10,
 		telemetryPath:   "/metrics",
 	}
 }
@@ -252,19 +254,22 @@ func TestMainParseFlags(t *testing.T) {
 		cleanUp()
 	})
 }
-
 func TestParseBasicAuth(t *testing.T) {
 	tests := []struct {
 		name                string
 		encodedCreds        string
-		expectedCredentials *credentials.Credentials
+		expectedCredentials *aws.Credentials
 		expectedAuthOk      bool
 	}{
 		{
-			name:                "valid basic auth header",
-			encodedCreds:        encodedBasicAuth,
-			expectedCredentials: credentials.NewStaticCredentials("fakeUser", "fakePassword", ""),
-			expectedAuthOk:      true,
+			name:         "valid basic auth header",
+			encodedCreds: encodedBasicAuth,
+			expectedCredentials: &aws.Credentials{
+				AccessKeyID:     "fakeUser",
+				SecretAccessKey: "fakePassword",
+				Source:          "BasicAuthHeader",
+			},
+			expectedAuthOk: true,
 		},
 		{
 			name:                "empty basic auth header",
@@ -279,14 +284,22 @@ func TestParseBasicAuth(t *testing.T) {
 			expectedAuthOk:      false,
 		},
 	}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			awsCredentials, authOk := parseBasicAuth(test.encodedCreds)
+			awsCredentialsProvider, authOk := parseBasicAuth(test.encodedCreds)
+
 			assert.Equal(t, test.expectedAuthOk, authOk)
-			assert.Equal(t, test.expectedCredentials, awsCredentials)
+
+			if test.expectedCredentials == nil {
+				assert.Nil(t, awsCredentialsProvider)
+			} else {
+				creds, err := awsCredentialsProvider.Retrieve(context.Background())
+				assert.NoError(t, err)
+				assert.Equal(t, test.expectedCredentials, &creds)
+			}
 		})
 	}
-
 }
 
 func TestLambdaHandlerPrepareRequest(t *testing.T) {
@@ -471,9 +484,13 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 				{key: defaultTableConfig.envFlag, value: tableValue},
 				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
-			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validWriteRequestBody), Headers: validWriteHeader},
-			mockSDKError:       &timestreamwrite.RejectedRecordsException{},
-			expectedStatusCode: (&timestreamwrite.RejectedRecordsException{}).StatusCode(),
+			inputRequest: events.APIGatewayProxyRequest{
+				IsBase64Encoded: true,
+				Body:            string(validWriteRequestBody),
+				Headers:         validWriteHeader,
+			},
+			mockSDKError:       &wtypes.RejectedRecordsException{},
+			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "Missing database name from write",
@@ -502,8 +519,10 @@ func TestLambdaHandlerWriteRequest(t *testing.T) {
 			mockTimestreamWriter := new(mockWriter)
 			mockTimestreamWriter.On(
 				"Write",
+				mock.Anything,
 				mock.AnythingOfType(writeRequestType),
-				mock.AnythingOfType(awsCredentialsType)).Return(test.mockSDKError)
+				mock.AnythingOfType(awsCredentialsType),
+			).Return(test.mockSDKError)
 
 			getWriteClient = func(timestreamClient *timestream.Client) writer {
 				return mockTimestreamWriter
@@ -564,9 +583,13 @@ func TestLambdaHandlerReadRequest(t *testing.T) {
 				{key: defaultTableConfig.envFlag, value: tableValue},
 				{key: defaultDatabaseConfig.envFlag, value: databaseValue},
 			},
-			inputRequest:       events.APIGatewayProxyRequest{IsBase64Encoded: true, Body: string(validReadRequestBody), Headers: validReadHeader},
-			mockSDKError:       &timestreamquery.ValidationException{},
-			expectedStatusCode: (&timestreamquery.ValidationException{}).StatusCode(),
+			inputRequest: events.APIGatewayProxyRequest{
+				IsBase64Encoded: true,
+				Body:            string(validReadRequestBody),
+				Headers:         validReadHeader,
+			},
+			mockSDKError:       &wtypes.RejectedRecordsException{},
+			expectedStatusCode: http.StatusBadRequest,
 		},
 		{
 			name: "Missing database name from read",
@@ -595,6 +618,7 @@ func TestLambdaHandlerReadRequest(t *testing.T) {
 			mockTimestreamReader := new(mockReader)
 			mockTimestreamReader.On(
 				"Read",
+				mock.Anything,
 				mock.AnythingOfType(readRequestType),
 				mock.AnythingOfType(awsCredentialsType)).Return(&prompb.ReadResponse{}, test.mockSDKError)
 
@@ -633,16 +657,51 @@ func TestCreateLogger(t *testing.T) {
 }
 
 func TestBuildAWSConfig(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		expectedAWSConfig := &aws.Config{
-			Region: aws.String("region"),
-		}
+	testCases := []struct {
+		name                string
+		maxRetries          int
+		expectedMaxAttempts int
+	}{
+		{
+			name:                "read config",
+			maxRetries:          10,
+			expectedMaxAttempts: 10,
+		},
+		{
+			name:                "write config",
+			maxRetries:          3,
+			expectedMaxAttempts: 3,
+		},
+	}
 
-		input := &connectionConfig{clientConfig: &clientConfig{region: "region"}}
-		actualOutput := input.buildAWSConfig()
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			expectedRegion := "region"
+			input := &connectionConfig{
+				clientConfig: &clientConfig{
+					region: expectedRegion,
+				},
+				maxReadRetries:  test.expectedMaxAttempts,
+				maxWriteRetries: test.expectedMaxAttempts,
+			}
 
-		assert.Equal(t, expectedAWSConfig, actualOutput)
-	})
+			actualConfig, err := input.buildAWSConfig(context.Background(), test.maxRetries)
+
+			assert.Nil(t, err)
+			assert.NotNil(t, actualConfig)
+			assert.Equal(t, expectedRegion, actualConfig.Region)
+
+			retryer := actualConfig.Retryer()
+			assert.NotNil(t, retryer)
+
+			standardRetryer, ok := retryer.(*retry.Standard)
+			assert.True(t, ok, "expected retryer to be of type *retry.Standard")
+
+			if ok {
+				assert.Equal(t, test.expectedMaxAttempts, standardRetryer.MaxAttempts())
+			}
+		})
+	}
 }
 
 func TestParseEnvironmentVariables(t *testing.T) {
@@ -664,7 +723,8 @@ func TestParseEnvironmentVariables(t *testing.T) {
 				enableSigV4Auth:           true,
 				failOnInvalidSample:       false,
 				failOnLongMetricLabelName: false,
-				maxRetries:                3,
+				maxReadRetries:            3,
+				maxWriteRetries:           10,
 			},
 			expectedError: nil,
 		},
@@ -687,10 +747,16 @@ func TestParseEnvironmentVariables(t *testing.T) {
 			expectedError:  errors.NewParseSampleOptionError("foo"),
 		},
 		{
-			name:           "error invalid max_retries option",
-			lambdaOptions:  []lambdaEnvOptions{{key: maxRetriesConfig.envFlag, value: "foo"}},
+			name:           "error invalid max_read_retries option",
+			lambdaOptions:  []lambdaEnvOptions{{key: maxReadRetriesConfig.envFlag, value: "foo"}},
 			expectedConfig: nil,
-			expectedError:  errors.NewParseRetriesError("foo"),
+			expectedError:  errors.NewParseRetriesError("foo", "read"),
+		},
+		{
+			name:           "error invalid max_write_retries option",
+			lambdaOptions:  []lambdaEnvOptions{{key: maxWriteRetriesConfig.envFlag, value: "foo"}},
+			expectedConfig: nil,
+			expectedError:  errors.NewParseRetriesError("foo", "write"),
 		},
 	}
 
@@ -712,6 +778,7 @@ func TestParseEnvironmentVariables(t *testing.T) {
 
 func TestWriteHandler(t *testing.T) {
 	var emptyTimeSeries *prompb.TimeSeries
+
 	tests := []struct {
 		name                  string
 		request               proto.Message
@@ -780,15 +847,13 @@ func TestWriteHandler(t *testing.T) {
 			expectedStatusCode:    http.StatusBadRequest,
 		},
 		{
-			name:    "SDK error from write",
-			request: validWriteRequest,
-			returnError: &timestreamwrite.RejectedRecordsException{
-				RespMetadata: protocol.ResponseMetadata{StatusCode: 419},
-			},
+			name:                  "SDK error from write",
+			request:               validWriteRequest,
+			returnError:           &wtypes.RejectedRecordsException{},
 			getWriteRequestReader: getReaderHelper,
 			basicAuthHeader:       basicAuthHeader,
 			encodedBasicAuth:      encodedBasicAuth,
-			expectedStatusCode:    419,
+			expectedStatusCode:    http.StatusBadRequest,
 		},
 		{
 			name:                  "unknown SDK error from write",
@@ -817,6 +882,62 @@ func TestWriteHandler(t *testing.T) {
 			encodedBasicAuth:      encodedBasicAuth,
 			expectedStatusCode:    http.StatusBadRequest,
 		},
+		{
+			name:    "smithy error - ThrottlingException",
+			request: validWriteRequest,
+			returnError: &smithy.OperationError{
+				Err: &smithy.GenericAPIError{
+					Code:    "ThrottlingException",
+					Message: "Request throttled",
+				},
+			},
+			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      encodedBasicAuth,
+			expectedStatusCode:    http.StatusTooManyRequests,
+		},
+		{
+			name:    "smithy error - ResourceNotFoundException",
+			request: validWriteRequest,
+			returnError: &smithy.OperationError{
+				Err: &smithy.GenericAPIError{
+					Code:    "ResourceNotFoundException",
+					Message: "Resource not found",
+				},
+			},
+			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      encodedBasicAuth,
+			expectedStatusCode:    http.StatusNotFound,
+		},
+		{
+			name:    "smithy error - AccessDeniedException",
+			request: validWriteRequest,
+			returnError: &smithy.OperationError{
+				Err: &smithy.GenericAPIError{
+					Code:    "AccessDeniedException",
+					Message: "Access denied",
+				},
+			},
+			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      encodedBasicAuth,
+			expectedStatusCode:    http.StatusForbidden,
+		},
+		{
+			name:    "smithy error - Unknown code",
+			request: validWriteRequest,
+			returnError: &smithy.OperationError{
+				Err: &smithy.GenericAPIError{
+					Code:    "UnknownException",
+					Message: "Some unknown error",
+				},
+			},
+			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      encodedBasicAuth,
+			expectedStatusCode:    http.StatusInternalServerError,
+		},
 	}
 
 	for _, test := range tests {
@@ -824,6 +945,7 @@ func TestWriteHandler(t *testing.T) {
 			mockTimestreamWriter := new(mockWriter)
 			mockTimestreamWriter.On(
 				"Write",
+				mock.Anything,
 				mock.AnythingOfType(writeRequestType),
 				mock.AnythingOfType(awsCredentialsType)).Return(test.returnError)
 
@@ -861,6 +983,7 @@ func TestWriteHandler(t *testing.T) {
 		mockTimestreamWriter := new(mockWriter)
 		mockTimestreamWriter.On(
 			"Write",
+			mock.Anything,
 			mock.AnythingOfType(writeRequestType),
 			mock.AnythingOfType(awsCredentialsType)).Return(errors.NewLongLabelNameError("", 0))
 		getWriteRequestClient := func(t *testing.T) io.Reader {
@@ -947,16 +1070,14 @@ func TestReadHandler(t *testing.T) {
 			expectedStatusCode:   http.StatusBadRequest,
 		},
 		{
-			name:    "SDK error from read",
-			request: validReadRequest,
-			returnError: &timestreamwrite.RejectedRecordsException{
-				RespMetadata: protocol.ResponseMetadata{StatusCode: http.StatusConflict},
-			},
+			name:                 "SDK error from read",
+			request:              validReadRequest,
+			returnError:          &wtypes.RejectedRecordsException{},
 			returnResponse:       nil,
 			getReadRequestReader: getReaderHelper,
 			basicAuthHeader:      basicAuthHeader,
 			encodedBasicAuth:     encodedBasicAuth,
-			expectedStatusCode:   http.StatusConflict,
+			expectedStatusCode:   http.StatusBadRequest,
 		},
 		{
 			name:                 "error from read",
@@ -995,6 +1116,7 @@ func TestReadHandler(t *testing.T) {
 			mockTimestreamReader := new(mockReader)
 			mockTimestreamReader.On(
 				"Read",
+				mock.Anything,
 				mock.AnythingOfType(readRequestType),
 				mock.AnythingOfType(awsCredentialsType)).Return(test.returnResponse, test.returnError)
 
@@ -1023,7 +1145,6 @@ func TestReadHandler(t *testing.T) {
 				// Decode and unmarshall the returned response body.
 				actualResponse, err := io.ReadAll(resp.Body)
 				assert.Nil(t, err, assertResponseMessage)
-
 				reqBuf, err := snappy.Decode(nil, actualResponse)
 				assert.Nil(t, err, assertResponseMessage)
 				var req prompb.ReadResponse

@@ -17,21 +17,23 @@ and limitations under the License.
 package integration
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
-	awsClient "github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/timestreamwrite"
+	"context"
+	"math/rand"
+	"os"
+	"testing"
+	"time"
+
+	"timestream-prometheus-connector/timestream"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/timestreamwrite"
 	"github.com/go-kit/log"
 	"github.com/google/go-cmp/cmp"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
-	"math/rand"
-	"os"
-	"testing"
-	"time"
-	"timestream-prometheus-connector/timestream"
 )
 
 var (
@@ -39,24 +41,33 @@ var (
 	nowUnix            = time.Now().UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 	endUnix            = nowUnix + 30000
 	destinations       = map[string][]string{database: {table}, database2: {table2}}
-	writeClient        = timestreamwrite.New(session.Must(session.NewSession()), aws.NewConfig().WithRegion(region))
-	awsCredentials     = writeClient.Config.Credentials
-	emptyCredentials   = credentials.NewStaticCredentials("", "", "")
-	invalidCredentials = credentials.NewStaticCredentials("accessKey", "secretKey", "")
+	writeClient        *timestreamwrite.Client
+	awsCredentials     aws.CredentialsProvider
+	emptyCredentials   aws.CredentialsProvider = credentials.NewStaticCredentialsProvider("", "", "")
+	invalidCredentials aws.CredentialsProvider = credentials.NewStaticCredentialsProvider("accessKey", "secretKey", "")
 )
 
 func TestMain(m *testing.M) {
-	if err := Setup(writeClient, destinations); err != nil {
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	if err != nil {
+		panic(err)
+	}
+	awsCredentials = cfg.Credentials
+
+	writeClient = timestreamwrite.NewFromConfig(cfg)
+	if err := Setup(ctx, writeClient, destinations); err != nil {
 		panic(err)
 	}
 	code := m.Run()
-	if err := Shutdown(writeClient, destinations); err != nil {
+	if err := Shutdown(ctx, writeClient, destinations); err != nil {
 		panic(err)
 	}
 	os.Exit(code)
 }
 
 func TestWriteClient(t *testing.T) {
+	ctx := context.Background()
 	req := &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{
 		createTimeSeriesTemplate(),
 	}}
@@ -70,7 +81,7 @@ func TestWriteClient(t *testing.T) {
 	tsLongLabel := createTimeSeriesTemplate()
 	tsLongLabel.Labels[1].Name = "a_very_long_long_long_long_long_label_name_that_will_be_over_sixty_bytes"
 	reqLongLabel := &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{
-		tsLongMetric,
+		tsLongLabel,
 	}}
 
 	var timeSeriesBatch []*prompb.TimeSeries
@@ -90,45 +101,56 @@ func TestWriteClient(t *testing.T) {
 	timeSeriesBatchFail = append(timeSeriesBatchFail, createTimeSeriesTemplate())
 	reqBatchFail := &prompb.WriteRequest{Timeseries: timeSeriesBatchFail}
 
-	awsConfigs := &aws.Config{Region: aws.String(region)}
-	clientEnableFailOnLongLabelName := createClient(t, logger, database, table, awsConfigs, true, false)
-	clientDisableFailOnLongLabelName := createClient(t, logger, database, table, awsConfigs, false, false)
+	clientEnableFailOnLongLabelName := createClient(t, logger, database, table, awsCredentials, true, false)
+	clientDisableFailOnLongLabelName := createClient(t, logger, database, table, awsCredentials, false, false)
 
 	type testCase []struct {
-		testName    string
-		request     *prompb.WriteRequest
-		credentials *credentials.Credentials
+		testName string
+		request  *prompb.WriteRequest
 	}
 
 	successTestCase := testCase{
-		{"write normal request", req, awsCredentials},
-		{"write request with long metric name", reqLongMetric, awsCredentials},
-		{"write request with long label value", reqLongLabel, awsCredentials},
-		{"write request with 100 samples per request", reqBatch, awsCredentials},
-		{"write request with more than 100 samples per request", largeReqBatch, awsCredentials},
+		{"write normal request", req},
+		{"write request with long metric name", reqLongMetric},
+		{"write request with long label value", reqLongLabel},
+		{"write request with 100 samples per request", reqBatch},
+		{"write request with more than 100 samples per request", largeReqBatch},
 	}
 	for _, test := range successTestCase {
 		t.Run(test.testName, func(t *testing.T) {
-			err := clientDisableFailOnLongLabelName.WriteClient().Write(test.request, test.credentials)
+			err := clientDisableFailOnLongLabelName.WriteClient().Write(ctx, test.request, awsCredentials)
 			assert.Nil(t, err)
 		})
 	}
-
-	invalidTestCase := testCase{
-		{"write request with failing long metric name", reqLongMetric, awsCredentials},
-		{"write request with failing long label value", reqLongLabel, awsCredentials},
-		{"write request with no AWS credentials", reqBatchFail, emptyCredentials},
-		{"write request with invalid AWS credentials", reqBatchFail, invalidCredentials},
+	invalidTestCases := []struct {
+		name           string
+		request        *prompb.WriteRequest
+		creds          aws.CredentialsProvider
+		allowLongLabel bool
+	}{
+		{"write request with failing long metric name", reqLongMetric, invalidCredentials, false},
+		{"write request with failing long label value", reqLongLabel, invalidCredentials, false},
+		{"write request with no AWS credentials", reqBatchFail, emptyCredentials, true},
+		{"write request with invalid AWS credentials", reqBatchFail, invalidCredentials, true},
 	}
-	for _, test := range invalidTestCase {
-		t.Run(test.testName, func(t *testing.T) {
-			err := clientEnableFailOnLongLabelName.WriteClient().Write(test.request, test.credentials)
+
+	for _, test := range invalidTestCases {
+		t.Run(test.name, func(t *testing.T) {
+			var client *timestream.Client
+			if test.allowLongLabel {
+				client = createClient(t, logger, database, table, test.creds, true, false)
+			} else {
+				client = clientEnableFailOnLongLabelName
+			}
+			err := client.WriteClient().Write(ctx, test.request, invalidCredentials)
 			assert.NotNil(t, err)
 		})
 	}
+
 }
 
 func TestQueryClient(t *testing.T) {
+	ctx := context.Background()
 	writeReq := createWriteRequest()
 	request, expectedResponse := createValidReadRequest()
 
@@ -159,16 +181,15 @@ func TestQueryClient(t *testing.T) {
 		},
 	}
 
-	awsConfigs := &aws.Config{Region: aws.String(region)}
-	clientDisableFailOnLongLabelName := createClient(t, logger, database, table, awsConfigs, false, false)
+	clientDisableFailOnLongLabelName := createClient(t, logger, database, table, awsCredentials, false, false)
 
-	err := clientDisableFailOnLongLabelName.WriteClient().Write(writeReq, awsCredentials)
+	err := clientDisableFailOnLongLabelName.WriteClient().Write(ctx, writeReq, awsCredentials)
 	assert.Nil(t, err)
 
 	invalidTestCase := []struct {
-		testName    string
-		request     *prompb.ReadRequest
-		credentials *credentials.Credentials
+		testName            string
+		request             *prompb.ReadRequest
+		credentialsProvider aws.CredentialsProvider
 	}{
 		{"read with invalid regex", requestWithInvalidRegex, awsCredentials},
 		{"read with invalid matcher", requestWithInvalidMatcher, awsCredentials},
@@ -178,14 +199,14 @@ func TestQueryClient(t *testing.T) {
 
 	for _, test := range invalidTestCase {
 		t.Run(test.testName, func(t *testing.T) {
-			response, err := clientDisableFailOnLongLabelName.QueryClient().Read(test.request, test.credentials)
+			response, err := clientDisableFailOnLongLabelName.QueryClient().Read(context.Background(), test.request, test.credentialsProvider)
 			assert.NotNil(t, err)
 			assert.Nil(t, response)
 		})
 	}
 
 	t.Run("read normal request", func(t *testing.T) {
-		response, err := clientDisableFailOnLongLabelName.QueryClient().Read(request, awsCredentials)
+		response, err := clientDisableFailOnLongLabelName.QueryClient().Read(ctx, request, awsCredentials)
 		assert.Nil(t, err)
 		assert.NotNil(t, response)
 		assert.True(t, cmp.Equal(expectedResponse, response), "Actual response does not match expected response.")
@@ -247,12 +268,18 @@ func createReadHints() *prompb.ReadHints {
 }
 
 // createClient creates a new Timestream client containing a Timestream query client and a Timestream write client.
-func createClient(t *testing.T, logger log.Logger, database, table string, configs *aws.Config, failOnLongMetricLabelName bool, failOnInvalidSample bool) *timestream.Client {
-	client := timestream.NewBaseClient(database, table)
-	client.NewQueryClient(logger, configs)
+func createClient(t *testing.T, logger log.Logger, database, table string, credentials aws.CredentialsProvider, failOnLongMetricLabelName bool, failOnInvalidSample bool) *timestream.Client {
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion(region),
+		config.WithCredentialsProvider(credentials),
+	)
+	if err != nil {
+		t.Fatalf("failed to load AWS config: %v", err)
+	}
 
-	configs.MaxRetries = aws.Int(awsClient.DefaultRetryerMaxNumRetries)
-	client.NewWriteClient(logger, configs, failOnLongMetricLabelName, failOnInvalidSample)
+	client := timestream.NewBaseClient(database, table)
+	client.NewQueryClient(logger, cfg)
+	client.NewWriteClient(logger, cfg, failOnLongMetricLabelName, failOnInvalidSample)
 	return client
 }
 

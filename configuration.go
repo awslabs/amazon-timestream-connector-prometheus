@@ -16,8 +16,9 @@ and limitations under the License.
 package main
 
 import (
-	awsClient "github.com/aws/aws-sdk-go/aws/client"
 	"strconv"
+
+	"github.com/aws/aws-sdk-go-v2/aws/retry"
 )
 
 type configuration struct {
@@ -29,7 +30,8 @@ type configuration struct {
 var (
 	enableLogConfig           = &configuration{flag: "enable-logging", envFlag: "enable_logging", defaultValue: "true"}
 	regionConfig              = &configuration{flag: "region", envFlag: "region", defaultValue: "us-east-1"}
-	maxRetriesConfig          = &configuration{flag: "max-retries", envFlag: "max_retries", defaultValue: strconv.Itoa(awsClient.DefaultRetryerMaxNumRetries)}
+	maxReadRetriesConfig      = &configuration{flag: "max-read-retries", envFlag: "max_read_retries", defaultValue: strconv.Itoa(retry.DefaultMaxAttempts)}
+	maxWriteRetriesConfig     = &configuration{flag: "max-write-retries", envFlag: "max_write_retries", defaultValue: strconv.Itoa(10)}
 	defaultDatabaseConfig     = &configuration{flag: "default-database", envFlag: "default_database", defaultValue: ""}
 	defaultTableConfig        = &configuration{flag: "default-table", envFlag: "default_table", defaultValue: ""}
 	enableSigV4AuthConfig     = &configuration{flag: "enable-sigv4-auth", envFlag: "enable_sigv4_auth", defaultValue: "true"}

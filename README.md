@@ -190,6 +190,12 @@ docker load < timestream-prometheus-connector-docker-image-<version>.tar.gz
   --default-table=prometheusMetricsTable
   ```
 
+If you have `docker compose` installed, you can bring up the containers with:
+
+  ```shell
+  docker compose up -d
+  ```
+
 It is recommended to secure the Prometheus requests with HTTPS with TLS encryption. To enable TLS encryption:
 
 1. Mount the volume containing the server certificate and the server private key to a volume on the Docker container, then specify the path to the certificate and the key through the `tls-certificate` and `tls-key` configuration options. Note that the path specified must be with respect to the Docker container.
@@ -571,7 +577,8 @@ The Prometheus Connector exposes the query SDK's retry configurations for users.
 
 | Standalone OptionOption | Lambda Option | Description | Is Required | Default Value |
 |--------|-------------|------------|---------|---------|
-| `max-retries` | `max_retries` |  The maximum number of times the read request will be retried for failures. | No | 3 |
+| `max-read-retries` | `max_read_retries` |  The maximum number of times the read request will be retried for failures. | No | 3 |
+| `max-write-retries` | `max_write_retries` |  The maximum number of times the write request will be retried for failures. | No | 10 |
 
 #### Configuration Examples
 
@@ -579,8 +586,8 @@ Configure the Prometheus Connector to retry up to 10 times upon recoverable erro
 
 | Runtime              | Command                                                                                                                                                                                           |
 | -------------------- |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Precompiled Binaries | `./bootstrap --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --max-retries=10`                                              |
-| AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={default_database=prometheusDatabase,default_table=prometheusMetricsTable,max_retries=10}"` |
+| Precompiled Binaries | `./bootstrap --default-database=PrometheusDatabase  --default-table=PrometheusMetricsTable --max-read-retries=10 --max-write-retries=10`                                              |
+| AWS Lambda Function  | `aws lambda update-function-configuration --function-name PrometheusConnector --environment "Variables={default_database=prometheusDatabase,default_table=prometheusMetricsTable,max_read_retries=10,max_write_retries=10}"` |
 
 ### Logger Configuration Options
 
@@ -925,11 +932,11 @@ All connector-specific errors can be found in [`errors/errors.go`](./errors/erro
 
 12. **Error**: `ParseRetriesError`
 
-    **Description**: This error will occur when the `max-retries` option has an invalid value.
+    **Description**: This error will occur when the `max-read-retries` or `max-write-retries` option has an invalid value.
     
     **Solution**
     
-    See the [Retry Configuration Options](#retry-configuration-options) section for acceptable formats for the `max-retries` option.
+    See the [Retry Configuration Options](#retry-configuration-options) section for acceptable formats for the `max-read-retries` or `max-write-retries` option.
 
 13. **Error**: `UnknownMatcherError`
 
