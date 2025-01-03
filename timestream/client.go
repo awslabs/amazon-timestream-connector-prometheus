@@ -347,6 +347,7 @@ func (qc *QueryClient) Read(
 	}, nil
 }
 
+// handleSDKErr parses and logs the error from SDK (if any)
 func (wc *WriteClient) handleSDKErr(req *prompb.WriteRequest, currErr error, errToReturn error) error {
 	var responseError *http.ResponseError
 	if !goErrors.As(currErr, &responseError) {

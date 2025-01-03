@@ -7,7 +7,7 @@ services:
     volumes:
       - .:/home
     command:
-      - --default-database=CorrDB
-      - --default-table=CorrMetrics
-      - --region=us-west-2
+      - --default-database=PrometheusDatabase
+      - --default-table=PrometheusMetricsTable
+      - --region=us-east-1
       - --log.level=debug

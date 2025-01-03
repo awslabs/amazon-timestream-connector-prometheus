@@ -13,7 +13,7 @@ aws timestream-write create-database --database-name CorrectnessDB --region us-w
 
 2. Bring up the Prometheus Connector:
 ```
-`docker compose -f ../docker-compose.yml up -d`
+docker compose -f ../docker-compose.yml up -d
 ```
 
 3. Run `go test -v`. Tests can take between 15~20 seconds to complete.
@@ -21,7 +21,7 @@ aws timestream-write create-database --database-name CorrectnessDB --region us-w
 ### Tips
 
 - To run correctness tests against an existing Timestream database, ensure the `freshTSDB` flag is disabled in the test suite.
-- The `ingestionWaitTime` parameter is adjustable to account for network latency, ensuring data ingestion is complete before evaluating test outputs.
+- The `ingestionWaitTime` parameter is adjustable to account for network latency, ensuring data ingestion is complete before evaluating test outputs. The default of 1 second should be sufficient (and functionally expected), but can increase as needed.
 
 ## Clean up
 1. Delete your Timestream database:
