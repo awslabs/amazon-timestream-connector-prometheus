@@ -34,9 +34,6 @@ RUN go mod download
 
 COPY . .
 
-# Run unit tests for main.go and client.go
-RUN CGO_ENABLED=0 go test -tags=unit -cover -v ./timestream ./
-
 # Build the binary for Linux.
 RUN CGO_ENABLED=0 GOOS=linux go build -o ./timestream-prometheus-connector .
 

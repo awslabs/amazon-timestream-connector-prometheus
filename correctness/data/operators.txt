@@ -1,9 +1,0 @@
-prometheus_http_requests_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"} + max(prometheus_http_requests_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"})
-prometheus_http_requests_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"} - max(prometheus_http_requests_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"})
-prometheus_http_requests_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"} * min(prometheus_http_requests_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"})
-prometheus_http_requests_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"} / max(prometheus_http_requests_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"})
-prometheus_http_requests_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"} % 5
-prometheus_http_requests_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"} ^ 2
-net_conntrack_dialer_conn_attempted_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"} and prometheus_http_response_size_bytes_count{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"}
-net_conntrack_dialer_conn_attempted_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"} or prometheus_http_response_size_bytes_count{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"}
-net_conntrack_dialer_conn_attempted_total{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"} unless prometheus_http_response_size_bytes_count{timestreamDatabase="correctness_testing", timestreamTable="correctness_testing"}

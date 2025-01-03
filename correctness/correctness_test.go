@@ -11,155 +11,616 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the speci
 and limitations under the License.
 */
 
-// This package executes all types of PromQLs Prometheus may send to the Prometheus Connector, which will output the
-// responses for the PromQLs to expectedOutput.csv for manual verification. The intent of this test is to ensure the
-// Prometheus Connector can properly translate PromQLs to Amazon Timestream SQLs.
-//
-// Prior to running the tests in this file, ensure valid IAM credentials are specified in the basic auth section within
-// config/prometheus.yml.
+// This test suite validates the correctness of the Prometheus Connector using Mockmetheus
+// to execute remote-read and remote-write operations. It covers various scenarios by
+// executing queries against a locally hosted Connector connected to a Timestream database.
 package correctness
 
 import (
-	"bufio"
 	"context"
-	"encoding/csv"
-	"io"
+	"fmt"
+	"math/rand"
 	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 	"time"
-	"timestream-prometheus-connector/integration"
-	"timestream-prometheus-connector/timestream"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/docker/docker/client"
 )
 
-const (
-	expectedOutputFilePath    = "data/expectedOutput.csv"
-	prometheusDockerImage     = "docker.io/prom/prometheus"
-	prometheusConfigPath      = "config/correctness_testing.yml"
-	prometheusDockerImageName = "prom/prometheus"
-	connectorDockerImageName  = "timestream-prometheus-connector-docker"
-)
+// Enable this flag when working with a fresh Timestream database.
+var freshTSDB = false
 
-var (
-	containerIDs  []string
-	connectorCMDs = []string{"--default-database=timestreamDatabase", "--default-table=timestreamTable", "--log.level=debug"}
-	headers       = []string{"PromQL", "Read Response"}
-)
+// ingestionWaitTime is the duration to wait for data ingestion.
+var ingestionWaitTime = 1 * time.Second
 
-func TestQueries(t *testing.T) {
-	files, err := filepath.Glob("data/*.txt")
-	require.NoError(t, err)
+// Shared Mockmetheus instance
+var m *Mockmetheus
 
-	var promQL []string
-	for _, file := range files {
-		promQL = loadPromQLFromFile(t, file, promQL)
-	}
-
-	dockerClient, ctx := integration.CreateDockerClient(t)
-
-	connectorConfig := integration.ConnectorContainerConfig{
-		DockerImage:       "../resources/timestream-prometheus-connector-docker-image-" + timestream.Version + ".tar.gz",
-		ImageName:         connectorDockerImageName,
-		ConnectorCommands: connectorCMDs,
-	}
-
-	containerIDs = append(containerIDs, integration.StartConnector(t, dockerClient, ctx, connectorConfig))
-
-	prometheusConfig := integration.PrometheusContainerConfig{
-		DockerImage: prometheusDockerImage,
-		ImageName:   prometheusDockerImageName,
-		ConfigPath:  prometheusConfigPath,
-	}
-	containerIDs = append(containerIDs, integration.StartPrometheus(t, dockerClient, ctx, prometheusConfig))
-
-	output, err := sendRequest(t, promQL)
-	errorCheck(t, err, dockerClient, ctx)
-	err = writeToFile(output)
-	errorCheck(t, err, dockerClient, ctx)
-
-	integration.StopContainer(t, dockerClient, ctx, containerIDs)
-}
-
-// loadPromQLFromFile loads the PromQL for correctness testing from the specified filepath.
-func loadPromQLFromFile(t *testing.T, filePath string, queries []string) []string {
-	file, err := os.Open(filePath)
-	require.NoError(t, err)
-
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		text := scanner.Text()
-		if len(text) != 0 {
-			queries = append(queries, scanner.Text())
-		}
-	}
-
-	assert.Nil(t, scanner.Err())
-	return queries
-}
-
-// sendRequest executes the given slice of PromQL through the Prometheus HTTP API.
-func sendRequest(t *testing.T, queries []string) ([][]string, error) {
-	output := [][]string{headers}
-
-	httpClient := integration.CreateHTTPClient()
-	now := time.Now()
-	prevHour := now.Add(time.Duration(-1) * time.Hour)
-
-	for i := range queries {
-		query := queries[i]
-		req := integration.CreateReadRequest(t, query, now, prevHour)
-
-		// Requests will fail while the Prometheus server is still setting up, retry until Prometheus server is ready to receive web requests.
-		retries := 0
-		for retries <= 10 {
-			resp, err := httpClient.Do(req)
-			if err == nil {
-				body, err := io.ReadAll(resp.Body)
-				if err != nil {
-					return output, err
-				}
-				output = append(output, []string{query, string(body)})
-				break
-			}
-
-			time.Sleep(5 * time.Second)
-			retries++
-		}
-	}
-
-	return output, nil
-}
-
-// errorCheck stops and removes the Docker container if an error has occurred.
-func errorCheck(t *testing.T, err error, dockerClient *client.Client, ctx context.Context) {
+func TestMain(main *testing.M) {
+	var err error
+	m, err = NewMockmetheus("http://0.0.0.0:9201")
 	if err != nil {
-		integration.StopContainer(t, dockerClient, ctx, containerIDs)
-		t.Fail()
+		fmt.Fprintf(os.Stderr, "Failed to initialize Mockmetheus: %v\n", err)
+		os.Exit(1)
+	}
+
+	code := main.Run()
+
+	os.Exit(code)
+}
+
+func TestEmptyOnInit(t *testing.T) {
+	ctx := context.Background()
+	var query string
+
+	if freshTSDB {
+		// Test empty on initialization
+		query = "prometheus_http_requests_total{}"
+	} else {
+		// For running against an existing Timestream DB, wait for a few
+		// seconds to avoid conflicting results
+		time.Sleep(3 * time.Second)
+		query = "prometheus_http_requests_total{}[3s]"
+	}
+
+	resp, err := m.RemoteRead(ctx, query)
+	if err != nil {
+		t.Fatalf("RemoteRead error: %v", err)
+	}
+
+	if !isEmpty(resp) {
+		t.Errorf("expected empty results but got non-empty")
 	}
 }
 
-// writeToFile writes the PromQL executed and the prompb.ReadResponse to a CSV file.
-func writeToFile(output [][]string) error {
-	file, err := os.OpenFile(expectedOutputFilePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+func TestReadMetricDNE(t *testing.T) {
+	ctx := context.Background()
+
+	query := "non_existent_metric"
+	resp, err := m.RemoteRead(ctx, query)
 	if err != nil {
-		return err
+		t.Fatalf("RemoteRead error: %v", err)
+	}
+	if !isEmpty(resp) {
+		t.Errorf("expected empty results for DNE metric but got non-empty")
+	}
+}
+
+func TestWriteNoData(t *testing.T) {
+	ctx := context.Background()
+
+	var data []TimeSeriesData // empty
+	err := m.RemoteWrite(ctx, data)
+	if err != nil {
+		t.Fatalf("RemoteWrite returned an error: %v", err)
+	}
+}
+
+func TestWriteNoLabels(t *testing.T) {
+	ctx := context.Background()
+
+	data := []TimeSeriesData{
+		{
+			Labels: map[string]string{},
+			Samples: []SampleData{
+				{Value: 220, Timestamp: time.Now().UnixMilli()},
+			},
+		},
+	}
+	err := m.RemoteWrite(ctx, data)
+	if err == nil {
+		t.Fatal("expected an error (status code 400), but got nil")
+	}
+	if !strings.Contains(err.Error(), "status code 400") {
+		t.Errorf("expected status code 400 error, got: %v", err)
+	}
+}
+
+func TestWriteNoSamples(t *testing.T) {
+	ctx := context.Background()
+
+	name := "prometheus_http_requests_total"
+	instance := "mockmetheus"
+
+	data := []TimeSeriesData{
+		{
+			Labels: map[string]string{
+				"__name__": name,
+				"instance": instance,
+			},
+			Samples: []SampleData{}, // no samples
+		},
+	}
+	if err := m.RemoteWrite(ctx, data); err != nil {
+		t.Fatalf("RemoteWrite error: %v", err)
 	}
 
-	csvWriter := csv.NewWriter(file)
-	defer csvWriter.Flush()
+	// Wait to ensure ingestion
+	time.Sleep(ingestionWaitTime)
 
-	if err := csvWriter.WriteAll(output); err != nil {
-		file.Close()
-		return err
+	// query for within the last 2 seconds, accounting for ingestion delay
+	waitSeconds := int(ingestionWaitTime.Seconds()) + 2
+	query := fmt.Sprintf(`%s{instance="%s"}[%ds]`, name, instance, waitSeconds)
+	resp, err := m.RemoteRead(ctx, query)
+	if err != nil {
+		t.Fatalf("RemoteRead error: %v", err)
+	}
+	if !isEmpty(resp) {
+		t.Errorf("expected empty results but got non-empty")
+	}
+}
+
+func TestSuccess(t *testing.T) {
+	ctx := context.Background()
+
+	name := "prometheus_http_requests_total"
+	instance := "mockmetheus"
+	expectedSample := 220.0
+	testID := generateTestRunID()
+
+	data := []TimeSeriesData{
+		{
+			Labels: map[string]string{
+				"__name__": name,
+				"instance": instance,
+				"test_id":  testID,
+			},
+			Samples: []SampleData{
+				{Value: expectedSample, Timestamp: time.Now().UnixMilli()},
+			},
+		},
+	}
+	if err := m.RemoteWrite(ctx, data); err != nil {
+		t.Fatalf("RemoteWrite error: %v", err)
 	}
 
-	file.Close()
-	return nil
+	time.Sleep(ingestionWaitTime)
+
+	waitSeconds := int(ingestionWaitTime.Seconds()) + 2
+	query := fmt.Sprintf(`%s{instance="%s", test_id="%s"}[%ds]`, name, instance, testID, waitSeconds)
+	resp, err := m.RemoteRead(ctx, query)
+	if err != nil {
+		t.Fatalf("RemoteRead error: %v", err)
+	}
+	if isEmpty(resp) {
+		t.Errorf("expected non-empty results but got empty")
+	}
+
+	// Validate the returned value by parsing out the time series
+	v, err := getFirstSampleValue(resp)
+	if err != nil {
+		t.Fatalf("error getting sample value: %v", err)
+	}
+	if v != expectedSample {
+		t.Errorf("expected sample value %.2f, got %.2f", expectedSample, v)
+	}
+}
+
+func TestSuccessWriteMultipleMetrics(t *testing.T) {
+	ctx := context.Background()
+
+	name := "prometheus_http_requests_total"
+	handler := "/api/v1/query"
+	instance := "mockmetheus"
+	job := "prometheus"
+	sample1 := 300.0
+
+	name2 := "mockmetheus_custom_metric"
+	sample2 := 400.0
+	testID := generateTestRunID()
+
+	data := []TimeSeriesData{
+		{
+			Labels: map[string]string{
+				"__name__": name,
+				"handler":  handler,
+				"instance": instance,
+				"test_id":  testID,
+				"job":      job,
+			},
+			Samples: []SampleData{
+				{Value: sample1, Timestamp: time.Now().UnixMilli()},
+			},
+		},
+		{
+			Labels: map[string]string{
+				"__name__": name2,
+				"handler":  handler,
+				"instance": instance,
+				"test_id":  testID,
+				"job":      job,
+			},
+			Samples: []SampleData{
+				{Value: sample2, Timestamp: time.Now().UnixMilli()},
+			},
+		},
+	}
+	if err := m.RemoteWrite(ctx, data); err != nil {
+		t.Fatalf("RemoteWrite error: %v", err)
+	}
+
+	time.Sleep(ingestionWaitTime)
+
+	waitSeconds := int(ingestionWaitTime.Seconds()) + 2
+
+	// Query for first metric
+	query1 := fmt.Sprintf(`%s{instance="%s", test_id="%s"}[%ds]`, name, instance, testID, waitSeconds)
+	resp1, err := m.RemoteRead(ctx, query1)
+	if err != nil {
+		t.Fatalf("RemoteRead error: %v", err)
+	}
+	if isEmpty(resp1) {
+		t.Errorf("expected non-empty results (metric1) but got empty")
+	}
+	v1, err := getFirstSampleValue(resp1)
+	if err != nil {
+		t.Fatalf("error getting sample value (metric1): %v", err)
+	}
+	if v1 != sample1 {
+		t.Errorf("expected sample value %.2f, got %.2f (metric1)", sample1, v1)
+	}
+
+	// Query for second metric
+	query2 := fmt.Sprintf(`%s{instance="%s", job="%s", test_id="%s"}[3s]`, name2, instance, job, testID)
+	resp2, err := m.RemoteRead(ctx, query2)
+	if err != nil {
+		t.Fatalf("RemoteRead error: %v", err)
+	}
+	if isEmpty(resp2) {
+		t.Errorf("expected non-empty results (metric2) but got empty")
+	}
+	v2, err := getFirstSampleValue(resp2)
+	if err != nil {
+		t.Fatalf("error getting sample value (metric2): %v", err)
+	}
+	if v2 != sample2 {
+		t.Errorf("expected sample value %.2f, got %.2f (metric2)", sample2, v2)
+	}
+}
+
+func TestSuccessMultipleSamples(t *testing.T) {
+	ctx := context.Background()
+
+	name := "prometheus_http_requests_total"
+	handler := "/api/v1/query"
+	instance := "mockmetheus"
+	job := "prometheus"
+	sample1 := 300.0
+	sample2 := 400.0
+	testID := generateTestRunID()
+
+	data := []TimeSeriesData{
+		{
+			Labels: map[string]string{
+				"__name__": name,
+				"handler":  handler,
+				"instance": instance,
+				"test_id":  testID,
+				"job":      job,
+			},
+			Samples: []SampleData{
+				{Value: sample1, Timestamp: time.Now().UnixMilli()},
+				{Value: sample2, Timestamp: time.Now().UnixMilli() - 100},
+			},
+		},
+	}
+	if err := m.RemoteWrite(ctx, data); err != nil {
+		t.Fatalf("RemoteWrite error: %v", err)
+	}
+
+	time.Sleep(ingestionWaitTime)
+
+	waitSeconds := int(ingestionWaitTime.Seconds()) + 2
+
+	// Query for first metric
+	query := fmt.Sprintf(`%s{handler="%s", instance="%s", job="%s", test_id="%s"}[%ds]`,
+		name, handler, instance, job, testID, waitSeconds,
+	)
+	resp, err := m.RemoteRead(ctx, query)
+	if err != nil {
+		t.Fatalf("RemoteRead error: %v", err)
+	}
+	if isEmpty(resp) {
+		t.Errorf("expected non-empty results but got empty")
+	}
+
+	// We expect multiple samples in ascending order by timestamp
+	tsSamples, err := getSampleValues(resp)
+	if err != nil {
+		t.Fatalf("error parsing samples: %v", err)
+	}
+	if len(tsSamples) != 2 {
+		t.Fatalf("expected 2 samples, got %d", len(tsSamples))
+	}
+	if tsSamples[0] != sample2 {
+		t.Errorf("expected first sample value=%.2f, got=%.2f", sample2, tsSamples[0])
+	}
+	if tsSamples[1] != sample1 {
+		t.Errorf("expected second sample value=%.2f, got=%.2f", sample1, tsSamples[1])
+	}
+}
+
+func TestSuccessLabelMatchers(t *testing.T) {
+	ctx := context.Background()
+
+	name := "prometheus_http_requests_total"
+	handler := "/api/v1/query"
+	instance := "mockmetheus"
+	job1 := "prometheus"
+	code1 := "200"
+	expected1 := 100.0
+
+	// second job & code
+	job2 := "mockmetheus"
+	code2 := "400"
+	expected2 := 200.0
+	expected3 := 300.0 // third sample for job2
+
+	// third code
+	code3 := "404"
+	expected4 := 100.0
+
+	testID := generateTestRunID()
+
+	data := []TimeSeriesData{
+		{
+			// timeseries #1
+			Labels: map[string]string{
+				"__name__": name,
+				"handler":  handler,
+				"instance": instance,
+				"test_id":  testID,
+				"job":      job1,
+				"code":     code1,
+			},
+			Samples: []SampleData{
+				{Value: expected1, Timestamp: time.Now().UnixMilli()},
+				{Value: expected2, Timestamp: time.Now().UnixMilli() - 100},
+			},
+		},
+		{
+			// timeseries #2
+			Labels: map[string]string{
+				"__name__": name,
+				"handler":  handler,
+				"instance": instance,
+				"test_id":  testID,
+				"job":      job2,
+				"code":     code2,
+			},
+			Samples: []SampleData{
+				{Value: expected1, Timestamp: time.Now().UnixMilli()},
+				{Value: expected2, Timestamp: time.Now().UnixMilli() - 100},
+				{Value: expected3, Timestamp: time.Now().UnixMilli() - 200},
+			},
+		},
+		{
+			// timeseries #3
+			Labels: map[string]string{
+				"__name__": name,
+				"handler":  handler,
+				"instance": instance,
+				"test_id":  testID,
+				"job":      job1,
+				"code":     code3,
+			},
+			Samples: []SampleData{
+				{Value: expected4, Timestamp: time.Now().UnixMilli()},
+			},
+		},
+	}
+	if err := m.RemoteWrite(ctx, data); err != nil {
+		t.Fatalf("RemoteWrite error: %v", err)
+	}
+	time.Sleep(ingestionWaitTime)
+
+	waitSeconds := int(ingestionWaitTime.Seconds()) + 2
+
+	// NEQ matcher: job != job1
+	// => Should return only timeseries #2
+	query := fmt.Sprintf(`%s{job!="%s", test_id="%s"}[%ds]`, name, job1, testID, waitSeconds)
+	resp, err := m.RemoteRead(ctx, query)
+	if err != nil {
+		t.Fatalf("RemoteRead error: %v", err)
+	}
+	if isEmpty(resp) {
+		t.Fatalf("expected non-empty results but got empty (NEQ matcher)")
+	}
+	numTS, numSamples := countTimeSeriesAndSamples(resp)
+	if numTS != 1 {
+		t.Errorf("expected 1 timeseries for job!=%s, got %d", job1, numTS)
+	}
+	// timeseries #2 has 3 samples
+	if numSamples != 3 {
+		t.Errorf("expected 3 samples in timeseries #2, got %d", numSamples)
+	}
+
+	// NRE matcher: code!~"2.."
+	// => Should return any timeseries whose code does not match 2xx
+	// timeseries #1 has code=200 (excluded), #2 has code=400 (included), #3 has code=404 (included)
+	query = fmt.Sprintf(`%s{code!~"2..", test_id="%s"}[%ds]`, name, testID, waitSeconds)
+	resp, err = m.RemoteRead(ctx, query)
+	if err != nil {
+		t.Fatalf("RemoteRead error: %v", err)
+	}
+	if isEmpty(resp) {
+		t.Fatalf("expected non-empty results but got empty (NRE matcher)")
+	}
+	numTS, _ = countTimeSeriesAndSamples(resp)
+	if numTS != 2 {
+		t.Errorf("expected 2 timeseries (codes 400,404), got %d", numTS)
+	}
+
+	// NEQ + NRE matcher
+	// job="{job2}" AND code!~"2.."
+	// => Should return timeseries #2 only
+	query = fmt.Sprintf(`%s{job="%s", code!~"2..", test_id="%s"}[%ds]`, name, job2, testID, waitSeconds+1)
+	resp, err = m.RemoteRead(ctx, query)
+	if err != nil {
+		t.Fatalf("RemoteRead error: %v", err)
+	}
+	if isEmpty(resp) {
+		t.Fatalf("expected non-empty results but got empty (NEQ+NRE matcher)")
+	}
+	numTS, numSamples = countTimeSeriesAndSamples(resp)
+	if numTS != 1 {
+		t.Errorf("expected 1 timeseries, got %d", numTS)
+	}
+	if numSamples != 3 {
+		t.Errorf("expected 3 samples for that timeseries, got %d", numSamples)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Helper functions
+// ----------------------------------------------------------------------------
+// Checks if the `results` array is empty or if the first result has no `timeseries`.
+func isEmpty(response map[string]interface{}) bool {
+	results, ok := response["results"].([]interface{})
+	if !ok || len(results) == 0 {
+		return true
+	}
+
+	firstResult, ok := results[0].(map[string]interface{})
+	if !ok {
+		return true
+	}
+
+	timeseriesList, ok := firstResult["timeseries"].([]interface{})
+	if !ok || len(timeseriesList) == 0 {
+		return true
+	}
+
+	return false
+}
+
+// getFirstSampleValue tries to return the first sample value from the first timeseries.
+func getFirstSampleValue(response map[string]interface{}) (float64, error) {
+	results, ok := response["results"].([]interface{})
+	if !ok || len(results) == 0 {
+		return 0, fmt.Errorf("no results found")
+	}
+
+	firstResult, ok := results[0].(map[string]interface{})
+	if !ok {
+		return 0, fmt.Errorf("invalid results[0] format")
+	}
+
+	timeseriesList, ok := firstResult["timeseries"].([]interface{})
+	if !ok || len(timeseriesList) == 0 {
+		return 0, fmt.Errorf("no timeseries in firstResult")
+	}
+
+	firstTimeseries, ok := timeseriesList[0].(map[string]interface{})
+	if !ok {
+		return 0, fmt.Errorf("invalid timeseries[0] format")
+	}
+
+	samplesList, ok := firstTimeseries["samples"].([]interface{})
+	if !ok || len(samplesList) == 0 {
+		return 0, fmt.Errorf("no samples in firstTimeseries")
+	}
+
+	firstSample, ok := samplesList[0].(map[string]interface{})
+	if !ok {
+		return 0, fmt.Errorf("invalid sample format")
+	}
+
+	value, ok := firstSample["value"].(float64)
+	if !ok {
+		return 0, fmt.Errorf("sample value not float64")
+	}
+
+	return value, nil
+}
+
+// getSampleValues returns all sample values from the first timeseries.
+func getSampleValues(response map[string]interface{}) ([]float64, error) {
+	var sampleValues []float64
+
+	results, ok := response["results"].([]interface{})
+	if !ok || len(results) == 0 {
+		return sampleValues, fmt.Errorf("no results found")
+	}
+
+	firstResult, ok := results[0].(map[string]interface{})
+	if !ok {
+		return sampleValues, fmt.Errorf("invalid results[0] format")
+	}
+
+	timeseriesList, ok := firstResult["timeseries"].([]interface{})
+	if !ok || len(timeseriesList) == 0 {
+		return sampleValues, fmt.Errorf("no timeseries in firstResult")
+	}
+
+	firstTimeseries, ok := timeseriesList[0].(map[string]interface{})
+	if !ok {
+		return sampleValues, fmt.Errorf("invalid timeseries[0] format")
+	}
+
+	samplesList, ok := firstTimeseries["samples"].([]interface{})
+	if !ok || len(samplesList) == 0 {
+		// Return an empty slice rather than an error, since "no samples" may be valid
+		return sampleValues, nil
+	}
+
+	for _, sample := range samplesList {
+		sampleMap, ok := sample.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		value, ok := sampleMap["value"].(float64)
+		if !ok {
+			continue
+		}
+
+		sampleValues = append(sampleValues, value)
+	}
+
+	return sampleValues, nil
+}
+
+// countTimeSeriesAndSamples returns the number of timeseries and total number of samples across all timeseries.
+func countTimeSeriesAndSamples(response map[string]interface{}) (int, int) {
+	results, ok := response["results"].([]interface{})
+	if !ok || len(results) == 0 {
+		return 0, 0
+	}
+
+	firstResult, ok := results[0].(map[string]interface{})
+	if !ok {
+		return 0, 0
+	}
+
+	timeseriesList, ok := firstResult["timeseries"].([]interface{})
+	if !ok {
+		return 0, 0
+	}
+
+	numTimeSeries := len(timeseriesList)
+	var totalSamples int
+
+	for _, ts := range timeseriesList {
+		timeseriesMap, ok := ts.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		samplesList, ok := timeseriesMap["samples"].([]interface{})
+		if !ok {
+			continue
+		}
+		totalSamples += len(samplesList)
+	}
+
+	return numTimeSeries, totalSamples
+}
+
+func generateTestRunID() string {
+	rand.Seed(time.Now().UnixNano())
+	alphabet := []rune("abcde12345")
+	idRunes := make([]rune, 4)
+	for i := 0; i < 4; i++ {
+		idRunes[i] = alphabet[rand.Intn(len(alphabet))]
+	}
+	return string(idRunes)
 }

@@ -779,6 +779,12 @@ func TestParseEnvironmentVariables(t *testing.T) {
 func TestWriteHandler(t *testing.T) {
 	var emptyTimeSeries *prompb.TimeSeries
 
+	invalidTimeSeries := &prompb.TimeSeries{
+		Labels: []*prompb.Label{},
+		Samples: []prompb.Sample{},
+	}
+	invalidWriteRequest := &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{invalidTimeSeries}}
+
 	tests := []struct {
 		name                  string
 		request               proto.Message
@@ -853,6 +859,15 @@ func TestWriteHandler(t *testing.T) {
 			getWriteRequestReader: getReaderHelper,
 			basicAuthHeader:       basicAuthHeader,
 			encodedBasicAuth:      encodedBasicAuth,
+			expectedStatusCode:    http.StatusUnprocessableEntity,
+		},
+		{
+			name:                  "SDK validation error from write",
+			request:               invalidWriteRequest,
+			returnError:           errors.NewSDKNonRequestError(goErrors.New("")),
+			getWriteRequestReader: getReaderHelper,
+			basicAuthHeader:       basicAuthHeader,
+			encodedBasicAuth:      encodedBasicAuth,
 			expectedStatusCode:    http.StatusBadRequest,
 		},
 		{
@@ -871,7 +886,7 @@ func TestWriteHandler(t *testing.T) {
 			getWriteRequestReader: getReaderHelper,
 			basicAuthHeader:       basicAuthHeader,
 			encodedBasicAuth:      encodedBasicAuth,
-			expectedStatusCode:    http.StatusBadRequest,
+			expectedStatusCode:    http.StatusNotFound,
 		},
 		{
 			name:                  "Missing table name from write",
@@ -880,7 +895,7 @@ func TestWriteHandler(t *testing.T) {
 			getWriteRequestReader: getReaderHelper,
 			basicAuthHeader:       basicAuthHeader,
 			encodedBasicAuth:      encodedBasicAuth,
-			expectedStatusCode:    http.StatusBadRequest,
+			expectedStatusCode:    http.StatusNotFound,
 		},
 		{
 			name:    "smithy error - ThrottlingException",

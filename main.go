@@ -30,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	wtypes "github.com/aws/aws-sdk-go-v2/service/timestreamwrite/types"
 	"github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 
 	"io"
 	"net/http"
@@ -230,6 +231,7 @@ func handleWriteRequest(reqBuf []byte, timestreamClient *timestream.Client, awsC
 
 	timestream.LogInfo(logger, fmt.Sprintf("Timestream write connection is initialized (Database: %s, Table: %s, Region: %s)", cfg.defaultDatabase, cfg.defaultTable, cfg.clientConfig.region))
 	if err := getWriteClient(timestreamClient).Write(context.Background(), &writeRequest, credentialsProvider); err != nil {
+		fmt.Println("A - 1")
 		errorCode := http.StatusBadRequest
 		return events.APIGatewayProxyResponse{
 			StatusCode: errorCode,
@@ -520,8 +522,10 @@ func createWriteHandler(logger log.Logger, writers []writer) func(w http.Respons
 		}
 		if err := writers[0].Write(context.Background(), &req, awsCredentials); err != nil {
 			switch err := err.(type) {
+			case *smithyhttp.ResponseError:
+        		http.Error(w, err.Error(), http.StatusBadRequest)
 			case *wtypes.RejectedRecordsException:
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			case *smithy.OperationError:
 				var apiError *smithy.GenericAPIError
 				if goErrors.As(err, &apiError) {
@@ -532,9 +536,9 @@ func createWriteHandler(logger log.Logger, writers []writer) func(w http.Respons
 			case *errors.SDKNonRequestError:
 				http.Error(w, err.Error(), http.StatusBadRequest)
 			case *errors.MissingDatabaseWithWriteError:
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				http.Error(w, err.Error(), http.StatusNotFound)
 			case *errors.MissingTableWithWriteError:
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				http.Error(w, err.Error(), http.StatusNotFound)
 			default:
 				halt(1)
 			}
@@ -610,6 +614,7 @@ func createReadHandler(logger log.Logger, readers []reader) func(w http.Response
 		w.Header().Set("Content-Encoding", "snappy")
 
 		if _, err := w.Write(snappy.Encode(nil, data)); err != nil {
+			fmt.Println("C - 1")
 			timestream.LogError(logger, "Error occurred while writing the encoded ReadResponse to the connection as part of an HTTP reply.", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

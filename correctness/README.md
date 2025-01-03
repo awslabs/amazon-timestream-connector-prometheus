@@ -1,18 +1,36 @@
 # Correctness Testing for Prometheus Connector
 
 ## Prerequisites
-Prior to running the tests in correctness_test.go, ensure the following:
-1. Have a database called correctness_testing with the table named correctness_testing created.
-2. Ingested data to the correctness_testing table for at least an hour.
-3. Updated the basic_auth section within [correctness_testing.yml](./config/correctness_testing.yml).
-2. Download or build the Prometheus Connector Docker image and store it in a new directory named `resources` in the repository root.
+1. Ensure your AWS credentials are configured for your environment. You can configure it with `aws configure`.
 
-## How to build and save the docker image
-1. Execute the following command to build the docker image:
-`docker buildx build . -t timestream-prometheus-connector-docker`
-2. Execute the following command to save the docker image as a compressed file and update the `version` appropriately:
-`docker save timestream-prometheus-connector-docker | gzip > timestream-prometheus-connector-docker-image-<version>.tar.gz`
+2. Create a new Timestream database and table:
+```
+aws timestream-write create-database --database-name CorrectnessDB --region us-west-2 && aws timestream-write create-table --database-name CorrectnessDB --table-name CorrectnessMetrics
+```
 
-## How to execute tests
-1. Run the following command to execute the correctness tests:
-`go test -v ./correctness`
+## Run Correctness Tests
+1. Update the default database and table in [`docker-compose.yml`](https://github.com/awslabs/amazon-timestream-connector-prometheus/blob/main/docker-compose.yml) with your new Timestream database and table.
+
+2. Bring up the Prometheus Connector:
+```
+`docker compose -f ../docker-compose.yml up -d`
+```
+
+3. Run `go test -v`. Tests can take between 15~20 seconds to complete.
+
+### Tips
+
+- To run correctness tests against an existing Timestream database, ensure the `freshTSDB` flag is disabled in the test suite.
+- The `ingestionWaitTime` parameter is adjustable to account for network latency, ensuring data ingestion is complete before evaluating test outputs.
+
+## Clean up
+1. Delete your Timestream database:
+
+```
+aws timestream-write delete-table --database-name CorrDB --table-name CorrMetrics --region us-west-2 && aws timestream-write delete-database --database-name CorrDB
+````
+
+2. Bring down the Connector with:
+```
+docker compose -f ../docker-compose.yml down
+```

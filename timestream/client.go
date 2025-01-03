@@ -347,16 +347,11 @@ func (qc *QueryClient) Read(
 	}, nil
 }
 
-// handleSDKErr parses and logs the error from SDK (if any)
 func (wc *WriteClient) handleSDKErr(req *prompb.WriteRequest, currErr error, errToReturn error) error {
 	var responseError *http.ResponseError
 	if !goErrors.As(currErr, &responseError) {
 		LogError(wc.logger, fmt.Sprintf("Error occurred while ingesting Timestream Records. %d records failed to be written", len(req.Timeseries)), currErr)
 		return currErr
-	}
-
-	if errToReturn == nil {
-		errToReturn = currErr
 	}
 
 	statusCode := responseError.HTTPStatusCode()
@@ -365,9 +360,12 @@ func (wc *WriteClient) handleSDKErr(req *prompb.WriteRequest, currErr error, err
 		LogDebug(wc.logger, "Error occurred while ingesting data due to invalid write request. "+
 			"Some Prometheus Samples were not ingested into Timestream, please review the write request and check the documentation for troubleshooting.",
 			"request", req)
+		return responseError
 	case 5:
-		errToReturn = currErr
 		LogDebug(wc.logger, "Internal server error occurred. Samples will be retried by Prometheus", "request", req)
+		if errToReturn == nil {
+			errToReturn = currErr
+		}
 	}
 
 	return errToReturn
