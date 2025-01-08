@@ -104,7 +104,7 @@ func TestReadLabelDNE(t *testing.T) {
 		t.Fatalf("RemoteRead error: %v", err)
 	}
 	if !isEmpty(resp) {
-		t.Errorf("expected empty results for DNE metric but got non-empty")
+		t.Errorf("expected empty results for DNE label but got non-empty")
 	}
 }
 
