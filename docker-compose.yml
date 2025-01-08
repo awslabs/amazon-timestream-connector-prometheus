@@ -7,7 +7,7 @@ services:
     volumes:
       - .:/home
     command:
-      - --default-database=PrometheusDatabase
-      - --default-table=PrometheusMetricsTable
-      - --region=us-east-1
+      - --default-database=${DEFAULT_DATABASE:-PrometheusDatabase}
+      - --default-table=${DEFAULT_TABLE:-PrometheusMetricsTable}
+      - --region=${AWS_REGION:-us-east-1}
       - --log.level=debug

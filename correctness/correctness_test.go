@@ -18,6 +18,7 @@ package correctness
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"math/rand"
 	"os"
@@ -27,15 +28,22 @@ import (
 )
 
 // Enable this flag when working with a fresh Timestream database.
-var freshTSDB = false
+var freshTSDB bool
 
 // ingestionWaitTime is the duration to wait for data ingestion.
-var ingestionWaitTime = 1 * time.Second
+var ingestionWaitTime time.Duration
 
 // Shared Mockmetheus instance
 var m *Mockmetheus
 
+func init() {
+	flag.BoolVar(&freshTSDB, "freshTSDB", true, "Use a fresh Timestream DB")
+	flag.DurationVar(&ingestionWaitTime, "ingestionWaitTime", 1*time.Second, "Delay to wait for data ingestion.")
+}
+
 func TestMain(main *testing.M) {
+	flag.Parse()
+
 	var err error
 	m, err = NewMockmetheus("http://0.0.0.0:9201")
 	if err != nil {
@@ -76,6 +84,21 @@ func TestReadMetricDNE(t *testing.T) {
 	ctx := context.Background()
 
 	query := "non_existent_metric"
+	resp, err := m.RemoteRead(ctx, query)
+	if err != nil {
+		t.Fatalf("RemoteRead error: %v", err)
+	}
+	if !isEmpty(resp) {
+		t.Errorf("expected empty results for DNE metric but got non-empty")
+	}
+}
+
+func TestReadLabelDNE(t *testing.T) {
+	ctx := context.Background()
+
+	metric := "non_existent_metric"
+	label := "some_label_value"
+	query := fmt.Sprintf(`%s{non_existent_label="%s"}`, metric, label)
 	resp, err := m.RemoteRead(ctx, query)
 	if err != nil {
 		t.Fatalf("RemoteRead error: %v", err)

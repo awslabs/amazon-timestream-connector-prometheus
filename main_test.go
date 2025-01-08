@@ -780,7 +780,7 @@ func TestWriteHandler(t *testing.T) {
 	var emptyTimeSeries *prompb.TimeSeries
 
 	invalidTimeSeries := &prompb.TimeSeries{
-		Labels: []*prompb.Label{},
+		Labels:  []*prompb.Label{},
 		Samples: []prompb.Sample{},
 	}
 	invalidWriteRequest := &prompb.WriteRequest{Timeseries: []*prompb.TimeSeries{invalidTimeSeries}}
