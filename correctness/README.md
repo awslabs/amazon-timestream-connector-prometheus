@@ -1,18 +1,70 @@
 # Correctness Testing for Prometheus Connector
 
 ## Prerequisites
-Prior to running the tests in correctness_test.go, ensure the following:
-1. Have a database called correctness_testing with the table named correctness_testing created.
-2. Ingested data to the correctness_testing table for at least an hour.
-3. Updated the basic_auth section within [correctness_testing.yml](./config/correctness_testing.yml).
-2. Download or build the Prometheus Connector Docker image and store it in a new directory named `resources` in the repository root.
 
-## How to build and save the docker image
-1. Execute the following command to build the docker image:
-`docker buildx build . -t timestream-prometheus-connector-docker`
-2. Execute the following command to save the docker image as a compressed file and update the `version` appropriately:
-`docker save timestream-prometheus-connector-docker | gzip > timestream-prometheus-connector-docker-image-<version>.tar.gz`
+1. **Configure AWS Credentials**
 
-## How to execute tests
-1. Run the following command to execute the correctness tests:
-`go test -v ./correctness`
+   Ensure your AWS credentials are configured for your environment. You can set them up using:
+   ```bash
+   aws configure
+   ```
+
+   **Note:** MFA credentials are not supported.
+
+2. **Create a New Timestream Database and Table**
+
+   Execute the following command to create a new Timestream database and table:
+   ```bash
+   aws timestream-write create-database --database-name CorrectnessDB --region <aws-region> && \
+   aws timestream-write create-table --database-name CorrectnessDB --table-name CorrectnessMetrics --region <aws-region>
+   ```
+
+## Run Correctness Tests
+
+1. **Start the Prometheus Connector**
+
+   Bring up the Prometheus Connector using the following command:
+   ```bash
+   DEFAULT_DATABASE=CorrectnessDB DEFAULT_TABLE=CorrectnessMetrics AWS_REGION=<aws-region> docker compose -f ../docker-compose.yml up -d
+   ```
+
+2. **Execute Tests**
+
+   Run the tests with:
+   ```bash
+   go test -v
+   ```
+
+   *Note:* Tests typically take between 15 to 20 seconds to complete.
+
+## Flags
+
+The correctness test suite (`correctness_test.go`) accepts several flags to customize its behavior during correctness testing. Below is a list of available flags along with their descriptions and default values:
+
+| **Flag** | **Description** | **Default Value** |
+|----------|----------------|-------------------|
+| `freshTSDB` | Indicates whether the tests should expect a clean database state. Set to `true` for a fresh database, `false` for an existing database with data. | `true` |
+| `ingestionWaitTime` | Sets the wait time (in seconds) after data ingestion to allow for data consistency before tests are evaluated. | `1s` |
+
+For example, to run against an existing Timestream database and table:
+
+   ```bash
+   go test -v -freshTSDB=false
+   ```
+
+## Clean Up
+
+1. **Delete the Timestream Database and Table**
+
+   Remove your newly created Timestream database and table using:
+   ```bash
+   aws timestream-write delete-table --database-name CorrectnessDB --table-name CorrectnessMetrics --region <aws-region> && \
+   aws timestream-write delete-database --database-name CorrectnessDB --region <aws-region>
+   ```
+
+2. **Stop the Prometheus Connector**
+
+   Bring down the Connector with:
+   ```bash
+   docker compose -f ../docker-compose.yml down
+   ```
