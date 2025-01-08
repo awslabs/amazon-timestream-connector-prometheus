@@ -283,7 +283,7 @@ func TestSuccessWriteMultipleMetrics(t *testing.T) {
 	}
 
 	// Query for second metric
-	query2 := fmt.Sprintf(`%s{instance="%s", job="%s", test_id="%s"}[3s]`, name2, instance, job, testID)
+	query2 := fmt.Sprintf(`%s{instance="%s", job="%s", test_id="%s"}[%ds]`, name2, instance, job, testID, waitSeconds)
 	resp2, err := m.RemoteRead(ctx, query2)
 	if err != nil {
 		t.Fatalf("RemoteRead error: %v", err)
