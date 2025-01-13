@@ -30,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	wtypes "github.com/aws/aws-sdk-go-v2/service/timestreamwrite/types"
 	"github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 
 	"io"
 	"net/http"
@@ -520,8 +521,10 @@ func createWriteHandler(logger log.Logger, writers []writer) func(w http.Respons
 		}
 		if err := writers[0].Write(context.Background(), &req, awsCredentials); err != nil {
 			switch err := err.(type) {
-			case *wtypes.RejectedRecordsException:
+			case *smithyhttp.ResponseError:
 				http.Error(w, err.Error(), http.StatusBadRequest)
+			case *wtypes.RejectedRecordsException:
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			case *smithy.OperationError:
 				var apiError *smithy.GenericAPIError
 				if goErrors.As(err, &apiError) {
@@ -532,9 +535,9 @@ func createWriteHandler(logger log.Logger, writers []writer) func(w http.Respons
 			case *errors.SDKNonRequestError:
 				http.Error(w, err.Error(), http.StatusBadRequest)
 			case *errors.MissingDatabaseWithWriteError:
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				http.Error(w, err.Error(), http.StatusNotFound)
 			case *errors.MissingTableWithWriteError:
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				http.Error(w, err.Error(), http.StatusNotFound)
 			default:
 				halt(1)
 			}

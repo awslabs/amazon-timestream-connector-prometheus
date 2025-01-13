@@ -308,7 +308,7 @@ func (qc *QueryClient) Read(
 	begin := time.Now()
 	var queryPageError error
 
-	for _, queryInput := range queryInputs {
+	for idx, queryInput := range queryInputs {
 		paginator := initPaginatorFactory(qc.timestreamQuery, queryInput)
 		for paginator.HasMorePages() {
 			page, err := paginator.NextPage(ctx)
@@ -328,6 +328,21 @@ func (qc *QueryClient) Read(
 		}
 
 		if queryPageError != nil {
+			// If columns are missing, Timestream's strict schema validation throws an OperationError exception.
+			// Return an empty set to ensure compatibility with Prometheus behavior.
+			var opError *smithy.OperationError
+			if goErrors.As(queryPageError, &opError) {
+				underlyingErr := opError.Unwrap()
+				if underlyingErr != nil {
+					errMessage := underlyingErr.Error()
+					if strings.Contains(errMessage, "does not exist") && strings.Contains(errMessage, "Column") {
+						LogInfo(qc.logger, "Returning empty result for this query due to missing column.")
+						results[idx] = &prompb.QueryResult{}
+						queryPageError = nil
+						continue
+					}
+				}
+			}
 			var apiError *smithy.GenericAPIError
 			if goErrors.As(queryPageError, &apiError) && apiError.Code == "ValidationException" && isRelatedToRegex {
 				LogError(qc.logger, "Error occurred due to unsupported query. Please validate the regular expression used in the query. Check the documentation for unsupported RE2 syntax.", queryPageError)
@@ -355,19 +370,18 @@ func (wc *WriteClient) handleSDKErr(req *prompb.WriteRequest, currErr error, err
 		return currErr
 	}
 
-	if errToReturn == nil {
-		errToReturn = currErr
-	}
-
 	statusCode := responseError.HTTPStatusCode()
 	switch statusCode / 100 {
 	case 4:
 		LogDebug(wc.logger, "Error occurred while ingesting data due to invalid write request. "+
 			"Some Prometheus Samples were not ingested into Timestream, please review the write request and check the documentation for troubleshooting.",
 			"request", req)
+		return responseError
 	case 5:
-		errToReturn = currErr
 		LogDebug(wc.logger, "Internal server error occurred. Samples will be retried by Prometheus", "request", req)
+		if errToReturn == nil {
+			errToReturn = currErr
+		}
 	}
 
 	return errToReturn
