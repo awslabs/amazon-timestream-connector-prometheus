@@ -52,6 +52,9 @@ var addUserAgentMiddleware = middleware.AddUserAgentKey("Prometheus Connector/" 
 // Store the initialization function calls to allow unit tests to mock the creation of real clients.
 var initWriteClient = func(cfg aws.Config) (TimestreamWriteClient, error) {
 	client := timestreamwrite.NewFromConfig(cfg, func(o *timestreamwrite.Options) {
+		if cfg.BaseEndpoint != nil {
+			o.BaseEndpoint = cfg.BaseEndpoint
+		}
 		o.APIOptions = append(o.APIOptions, addUserAgentMiddleware)
 	})
 	return client, nil
@@ -59,6 +62,9 @@ var initWriteClient = func(cfg aws.Config) (TimestreamWriteClient, error) {
 
 var initQueryClient = func(cfg aws.Config) (*timestreamquery.Client, error) {
 	client := timestreamquery.NewFromConfig(cfg, func(o *timestreamquery.Options) {
+		if cfg.BaseEndpoint != nil {
+			o.BaseEndpoint = cfg.BaseEndpoint
+		}
 		o.APIOptions = append(o.APIOptions, addUserAgentMiddleware)
 	})
 	return client, nil

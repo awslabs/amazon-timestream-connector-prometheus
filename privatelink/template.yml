@@ -1,0 +1,186 @@
+Transform: AWS::Serverless-2016-10-31
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: timestream-privatelink-ec2
+    Description: "This serverless application deploys an Amazon EC2 instance and a set of VPC endpoints to an existing VPC that uses PrivateLink for communication across AWS services."
+    Author: "Amazon Timestream"
+    SpdxLicenseId: "Apache-2.0"
+    LicenseUrl: "../LICENSE"
+    ReadmeUrl: "DEVELOPER_README.md"
+    HomePageUrl: "https://aws.amazon.com/timestream/"
+    SemanticVersion: "1.3.1"
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The ID of the VPC where resources will be deployed.
+
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: ID of private subnets in VPC.
+
+  PrivateRouteTableIds:
+    Type: List<String>
+    Description: ID of private route tables in VPC.
+
+  VpcCidrIp:
+    Description: The CIDR IP range for the VPC.
+    Type: String
+
+  TimestreamQueryCell:
+    Description: The query cell for the Timestream service.
+    Type: String
+
+  TimestreamWriteCell:
+    Description: The ingest cell for the Timestream service.
+    Type: String
+
+  InstanceType:
+    Description: The EC2 instance type.
+    Type: String
+    Default: "t4g.micro"
+
+  LatestAmiId:
+    Description: The EC2 instance AMI ID from Parameter Store
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-arm64-gp2'
+
+Resources:
+  SSMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: TimestreamAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "timestream:DescribeEndpoints"
+                Resource: "*"
+              - Effect: "Allow"
+                Action:
+                  - "timestream:ListDatabases"
+                  - "timestream:WriteRecords"
+                  - "timestream:Select"
+                Resource: !Sub "arn:aws:timestream:${AWS::Region}:${AWS::AccountId}:database/*"
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: SSMRole
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAmiId
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: false
+          DeviceIndex: 0
+          SubnetId: !Select [0, !Ref PrivateSubnetIds]
+          GroupSet:
+            - Ref: EC2InstanceSG
+
+  EC2InstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow necessary traffic from within VPC
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref VpcCidrIp
+
+  VPCEndpointInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for VPC Endpoints
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref EC2InstanceSG
+
+  VPCEndpointSSM:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      VpcId: !Ref VpcId
+      VpcEndpointType: Interface
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds:
+        - Ref: VPCEndpointInstanceSG
+      PrivateDnsEnabled: true
+
+  VPCEndpointEC2Messages:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ec2messages
+      VpcId: !Ref VpcId
+      VpcEndpointType: Interface
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds:
+        - Ref: VPCEndpointInstanceSG
+      PrivateDnsEnabled: true
+
+  VPCEndpointSSMMessages:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssmmessages
+      VpcId: !Ref VpcId
+      VpcEndpointType: Interface
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds:
+        - Ref: VPCEndpointInstanceSG
+      PrivateDnsEnabled: true
+
+  VPCEndpointTimestreamWrite:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.timestream.${TimestreamWriteCell}
+      VpcId: !Ref VpcId
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds:
+        - !Ref VPCEndpointInstanceSG
+      PrivateDnsEnabled: true
+      VpcEndpointType: Interface
+
+  VPCEndpointTimestreamQuery:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.timestream.${TimestreamQueryCell}
+      VpcId: !Ref VpcId
+      SubnetIds: !Ref PrivateSubnetIds
+      SecurityGroupIds:
+        - !Ref VPCEndpointInstanceSG
+      PrivateDnsEnabled: true
+      VpcEndpointType: Interface
+
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcId: !Ref VpcId
+      VpcEndpointType: Gateway
+      RouteTableIds: !Ref PrivateRouteTableIds
+
+Outputs:
+  InstanceId:
+    Description: ID of the EC2 instance
+    Value: !Ref EC2Instance

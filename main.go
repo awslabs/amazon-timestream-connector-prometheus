@@ -103,6 +103,8 @@ type connectionConfig struct {
 	telemetryPath             string
 	maxReadRetries            int
 	maxWriteRetries           int
+	queryBaseEndpoint         string
+	writeBaseEndpoint         string
 	certificate               string
 	key                       string
 }
@@ -122,13 +124,14 @@ func main() {
 		logger := cfg.createLogger()
 
 		ctx := context.Background()
-		awsQueryConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxReadRetries)
+
+		awsQueryConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxReadRetries, cfg.queryBaseEndpoint)
 		if err != nil {
 			timestream.LogError(logger, "Failed to build AWS configuration for query", err)
 			os.Exit(1)
 		}
 
-		awsWriteConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxWriteRetries)
+		awsWriteConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxWriteRetries, cfg.writeBaseEndpoint)
 		if err != nil {
 			timestream.LogError(logger, "Failed to build AWS configuration for write", err)
 			os.Exit(1)
@@ -185,12 +188,12 @@ func lambdaHandler(req events.APIGatewayProxyRequest) (events.APIGatewayProxyRes
 			return createErrorResponse(errors.NewParseBasicAuthHeaderError().(*errors.ParseBasicAuthHeaderError).Message())
 		}
 	}
-	awsQueryConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxReadRetries)
+	awsQueryConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxReadRetries, cfg.queryBaseEndpoint)
 	if err != nil {
 		timestream.LogError(logger, "Failed to build AWS configuration for query", err)
 		os.Exit(1)
 	}
-	awsWriteConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxWriteRetries)
+	awsWriteConfigs, err := cfg.buildAWSConfig(ctx, cfg.maxWriteRetries, cfg.writeBaseEndpoint)
 	if err != nil {
 		timestream.LogError(logger, "Failed to build AWS configuration for write", err)
 		os.Exit(1)
@@ -394,6 +397,9 @@ func parseEnvironmentVariables() (*connectionConfig, error) {
 		return nil, errors.NewParseRetriesError(writeRetries, "write")
 	}
 
+	cfg.queryBaseEndpoint = getOrDefault(queryBaseEndpointConfig)
+	cfg.writeBaseEndpoint = getOrDefault(writeBaseEndpointConfig)
+
 	cfg.promlogConfig = promlog.Config{Level: &promlog.AllowedLevel{}, Format: &promlog.AllowedFormat{}}
 	cfg.promlogConfig.Level.Set(getOrDefault(promlogLevelConfig))
 	cfg.promlogConfig.Format.Set(getOrDefault(promlogFormatConfig))
@@ -431,6 +437,10 @@ func parseFlags() *connectionConfig {
 	a.Flag(certificateConfig.flag, "TLS server certificate file.").Default(certificateConfig.defaultValue).StringVar(&cfg.certificate)
 	a.Flag(keyConfig.flag, "TLS server private key file.").Default(keyConfig.defaultValue).StringVar(&cfg.key)
 	a.Flag(enableSigV4AuthConfig.flag, "Whether to enable SigV4 authentication with the API Gateway. Default to 'false'.").Default(enableSigV4AuthConfig.defaultValue).StringVar(&enableSigV4Auth)
+	a.Flag(queryBaseEndpointConfig.flag, "Override the default Timestream query endpoint (e.g., a VPC Endpoint).").
+		Default(queryBaseEndpointConfig.defaultValue).StringVar(&cfg.queryBaseEndpoint)
+	a.Flag(writeBaseEndpointConfig.flag, "Override the default Timestream write endpoint (e.g., a VPC Endpoint).").
+		Default(writeBaseEndpointConfig.defaultValue).StringVar(&cfg.writeBaseEndpoint)
 
 	flag.AddFlags(a, &cfg.promlogConfig)
 
@@ -439,7 +449,12 @@ func parseFlags() *connectionConfig {
 		os.Exit(1)
 	}
 
-	if err := cfg.parseBoolFromStrings(enableLogging, failOnLongMetricLabelName, failOnInvalidSample, enableSigV4Auth); err != nil {
+	if err := cfg.parseBoolFromStrings(
+		enableLogging,
+		failOnLongMetricLabelName,
+		failOnInvalidSample,
+		enableSigV4Auth,
+	); err != nil {
 		os.Exit(1)
 	}
 
@@ -457,7 +472,7 @@ func parseFlags() *connectionConfig {
 }
 
 // buildAWSConfig builds a aws.Config and return the pointer of the config.
-func (cfg *connectionConfig) buildAWSConfig(ctx context.Context, maxRetries int) (aws.Config, error) {
+func (cfg *connectionConfig) buildAWSConfig(ctx context.Context, maxRetries int, baseEndpoint string) (aws.Config, error) {
 	awsConfig, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion(cfg.clientConfig.region),
 		config.WithRetryer(func() aws.Retryer {
@@ -468,6 +483,10 @@ func (cfg *connectionConfig) buildAWSConfig(ctx context.Context, maxRetries int)
 	)
 	if err != nil {
 		return aws.Config{}, fmt.Errorf("failed to build AWS config: %w", err)
+	}
+
+	if baseEndpoint != "" {
+		awsConfig.BaseEndpoint = aws.String(baseEndpoint)
 	}
 	return awsConfig, nil
 }

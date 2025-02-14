@@ -661,16 +661,19 @@ func TestBuildAWSConfig(t *testing.T) {
 		name                string
 		maxRetries          int
 		expectedMaxAttempts int
+		baseEndpoint        string
 	}{
 		{
 			name:                "read config",
 			maxRetries:          10,
 			expectedMaxAttempts: 10,
+			baseEndpoint:        "",
 		},
 		{
 			name:                "write config",
 			maxRetries:          3,
 			expectedMaxAttempts: 3,
+			baseEndpoint:        "https://ingest-cell1.timestream.us-west-2.amazonaws.com",
 		},
 	}
 
@@ -685,7 +688,7 @@ func TestBuildAWSConfig(t *testing.T) {
 				maxWriteRetries: test.expectedMaxAttempts,
 			}
 
-			actualConfig, err := input.buildAWSConfig(context.Background(), test.maxRetries)
+			actualConfig, err := input.buildAWSConfig(context.Background(), test.maxRetries, test.baseEndpoint)
 
 			assert.Nil(t, err)
 			assert.NotNil(t, actualConfig)
@@ -699,6 +702,9 @@ func TestBuildAWSConfig(t *testing.T) {
 
 			if ok {
 				assert.Equal(t, test.expectedMaxAttempts, standardRetryer.MaxAttempts())
+			}
+			if test.baseEndpoint != "" {
+				assert.Equal(t, aws.String(test.baseEndpoint), actualConfig.BaseEndpoint)
 			}
 		})
 	}
