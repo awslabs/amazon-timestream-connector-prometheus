@@ -6,7 +6,7 @@ Metadata:
     Description: "This serverless application deploys an AWS Lambda function and an Amazon API Gateway that listens for Prometheus remote write/read requests and stores metrics to Amazon Timestream. This application allows configurations over the resources being created."
     Author: "Amazon Timestream"
     SpdxLicenseId: "Apache-2.0"
-    LicenseUrl: "LICENSE"
+    LicenseUrl: "../LICENSE"
     ReadmeUrl: "DEVELOPER_README.md"
     HomePageUrl: "https://aws.amazon.com/timestream/"
     SemanticVersion: "1.3.1"
