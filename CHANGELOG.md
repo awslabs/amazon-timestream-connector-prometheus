@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.3.2](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.3.2) - 2025-02-25
+### Dependencies
+- [Bump golang.org/x/net](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/86)
+
+### Added
+- [PrivateLink deployment support](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/87)
+
+### Fixed
+- [Correctness testing](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/85)
+
 ## [v1.3.1](https://github.com/awslabs/amazon-timestream-connector-prometheus/releases/tag/1.3.1) - 2024-12-17
 ### Dependencies
 - [AWS SDK Go V2 Upgrade](https://github.com/awslabs/amazon-timestream-connector-prometheus/pull/83)
