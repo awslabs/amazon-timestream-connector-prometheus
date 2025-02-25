@@ -9,7 +9,7 @@ Metadata:
     LicenseUrl: "../LICENSE"
     ReadmeUrl: "DEVELOPER_README.md"
     HomePageUrl: "https://aws.amazon.com/timestream/"
-    SemanticVersion: "1.3.1"
+    SemanticVersion: "1.3.2"
 
 Parameters:
   APIGatewayStageName:
@@ -108,7 +108,7 @@ Resources:
       Role: !GetAtt IAMLambdaRole.Arn
       CodeUri:
         Bucket: !Sub 'timestreamassets-${AWS::Region}'
-        Key: "timestream-prometheus-connector/timestream-prometheus-connector-linux-arm64-1.3.1.zip"
+        Key: "timestream-prometheus-connector/timestream-prometheus-connector-linux-arm64-1.3.2.zip"
       Description: "Prometheus remote storage connector for Amazon Timestream"
       Handler: "bootstrap"
       MemorySize: !Ref MemorySize
