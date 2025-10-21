@@ -16,6 +16,9 @@ on:
     tags:
       - '*'
 
+permissions:
+  contents: write
+
 jobs:
   release:
     name: Upload Release Asset
