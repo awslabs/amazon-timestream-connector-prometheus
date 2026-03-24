@@ -60,4 +60,3 @@ jobs:
         with:
           skip-cache: true
           version: v2.11
-          args: --exclude ".Log(.*)|format.Set|level.Set" --timeout=2m
