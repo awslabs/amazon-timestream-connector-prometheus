@@ -27,7 +27,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: 'stable'
           cache: false
@@ -35,7 +35,7 @@ jobs:
           GO111MODULE: on
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build
         run: go build -v .
@@ -47,17 +47,16 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: stable
           cache: false
         env:
           GO111MODULE: on
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           skip-cache: true
-          version: v1.64.5
-          args: --exclude ".Log(.*)|format.Set|level.Set" --timeout=2m
+          version: v2.11

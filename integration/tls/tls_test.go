@@ -31,7 +31,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/timestreamquery"
 	"github.com/aws/aws-sdk-go-v2/service/timestreamwrite"
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -203,13 +203,13 @@ func sendReadRequest(t *testing.T, query string) (int, error) {
 
 // connectorStatusCheck checks if the exit code of the Prometheus Connector response is as expected.
 func connectorStatusCheck(t *testing.T, dockerClient *client.Client, ctx context.Context, respID string, expectedExitCode int) {
-	var jsonRes types.ContainerJSON
+	var jsonRes container.InspectResponse
 	var err error
 
 	for i := 0; i < retries; i++ {
 		// Busy wait for a minute to give the containers time to send the first request.
 		jsonRes, err = dockerClient.ContainerInspect(ctx, respID)
-		out, _ := dockerClient.ContainerLogs(ctx, respID, types.ContainerLogsOptions{ShowStdout: true})
+		out, _ := dockerClient.ContainerLogs(ctx, respID, container.LogsOptions{ShowStdout: true})
 		_ = out
 		require.NoError(t, err)
 		assert.NotNil(t, jsonRes.State)

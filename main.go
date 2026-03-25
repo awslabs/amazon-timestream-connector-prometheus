@@ -401,8 +401,12 @@ func parseEnvironmentVariables() (*connectionConfig, error) {
 	cfg.writeBaseEndpoint = getOrDefault(writeBaseEndpointConfig)
 
 	cfg.promlogConfig = promlog.Config{Level: &promlog.AllowedLevel{}, Format: &promlog.AllowedFormat{}}
-	cfg.promlogConfig.Level.Set(getOrDefault(promlogLevelConfig))
-	cfg.promlogConfig.Format.Set(getOrDefault(promlogFormatConfig))
+	if err := cfg.promlogConfig.Level.Set(getOrDefault(promlogLevelConfig)); err != nil {
+		return nil, fmt.Errorf("error setting log level: %w", err)
+	}
+	if err := cfg.promlogConfig.Format.Set(getOrDefault(promlogFormatConfig)); err != nil {
+		return nil, fmt.Errorf("error setting log format: %w", err)
+	}
 
 	return cfg, nil
 }

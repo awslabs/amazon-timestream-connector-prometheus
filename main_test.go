@@ -167,8 +167,8 @@ func (m *mockReader) Read(ctx context.Context, req *prompb.ReadRequest, credenti
 func setUp() ([]string, *connectionConfig) {
 	promLogFormat := &promlog.AllowedFormat{}
 	promLogLevel := &promlog.AllowedLevel{}
-	promLogFormat.Set("logfmt")
-	promLogLevel.Set("info")
+	_ = promLogFormat.Set("logfmt")
+	_ = promLogLevel.Set("info")
 
 	return []string{"cmd", "--default-database=foo", "--default-table=bar"}, &connectionConfig{
 		clientConfig:    &clientConfig{region: "us-east-1"},
@@ -1205,7 +1205,7 @@ func encodeData(data []byte) []byte {
 func setEnvironmentVariables(options []lambdaEnvOptions) {
 	for i := range options {
 		option := options[i]
-		os.Setenv(option.key, option.value)
+		_ = os.Setenv(option.key, option.value)
 	}
 }
 
@@ -1213,7 +1213,7 @@ func setEnvironmentVariables(options []lambdaEnvOptions) {
 func unsetEnvironmentVariables(options []lambdaEnvOptions) {
 	for i := range options {
 		option := options[i]
-		os.Unsetenv(option.key)
+		_ = os.Unsetenv(option.key)
 	}
 }
 
@@ -1221,8 +1221,8 @@ func unsetEnvironmentVariables(options []lambdaEnvOptions) {
 func createDefaultPromlogConfig() promlog.Config {
 	format := &promlog.AllowedFormat{}
 	level := &promlog.AllowedLevel{}
-	format.Set("logfmt")
-	level.Set("info")
+	_ = format.Set("logfmt")
+	_ = level.Set("info")
 	promlogConfig := promlog.Config{Level: level, Format: format}
 	return promlogConfig
 }

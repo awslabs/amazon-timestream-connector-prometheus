@@ -16,6 +16,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -26,8 +27,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/timestreamwrite"
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/assert"
@@ -59,12 +60,14 @@ func CreateDockerClient(t *testing.T) (*client.Client, context.Context) {
 
 // StartPrometheus starts the Prometheus server in a Docker container.
 func StartPrometheus(t *testing.T, cli *client.Client, ctx context.Context, config PrometheusContainerConfig) string {
-	out, err := cli.ImagePull(ctx, config.DockerImage, types.ImagePullOptions{})
+	out, err := cli.ImagePull(ctx, config.DockerImage, image.PullOptions{})
 	require.NoError(t, err)
 	// Output the pull process.
 	_, err = io.Copy(os.Stdout, out)
 	require.NoError(t, err)
-	defer out.Close()
+	if err := out.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to close image pull reader: %v\n", err)
+	}
 
 	resp, err := cli.ContainerCreate(ctx, &container.Config{
 		Image: config.ImageName,
@@ -91,8 +94,13 @@ func StartConnector(t *testing.T, cli *client.Client, ctx context.Context, confi
 	image, err := os.Open(config.DockerImage)
 	require.NoError(t, err)
 
-	_, err = cli.ImageLoad(ctx, image, true)
+	loadResponse, err := cli.ImageLoad(ctx, image)
 	require.NoError(t, err)
+	defer func() {
+		if err := loadResponse.Body.Close(); err != nil {
+			t.Logf("Failed to close load response body: %v", err)
+		}
+	}()
 
 	hostConfig := &container.HostConfig{
 		PortBindings: nat.PortMap{
